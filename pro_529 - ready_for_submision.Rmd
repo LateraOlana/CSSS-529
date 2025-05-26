@@ -1,0 +1,3174 @@
+---
+title: "Project codes"
+author: "Latera Tesfaye Olana"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+header-includes: 
+ \usepackage{float}
+ \usepackage{booktabs}
+ \usepackage{longtable}
+ \usepackage{array}
+ \usepackage{multirow}
+ \usepackage[table]{xcolor}
+ \usepackage{wrapfig}
+ \usepackage{float}
+ \floatplacement{figure}{H}
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(gridExtra)
+library(ggpubr)
+library(ggfx)
+library(prioritizr)
+library(cowplot)
+library(SUMMER)
+library(forcats)
+library(rdhs)
+library(INLA)
+library(survey)
+library(readr)
+library(viridis)
+library(surveyPrev)
+library(patchwork)
+library(tidyr)
+library(patchwork)
+library(kableExtra)
+library(sf)
+library(tidyverse)
+library(ggrepel)
+library(ggstance)
+library(scales)
+library(igraph)   
+library(dplyr)    
+library(terra)
+library(exactextractr)
+library(INLA)
+library(spdep)
+library(ggtext)
+library(forcats)
+library(survey)
+library(viridis)
+library(ggnewscale)
+library(ggspatial)
+library(patchwork)
+library(purrr)
+library(msm) 
+library(showtext)
+library(grid)
+library(RColorBrewer)
+
+
+
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(
+  
+  fig.pos = 'H', # Places figures at top or here
+  out.width = '100%', dpi = 300, # Figure resolution and size
+  fig.env="figure"
+) # Latex figure environment
+#library(devtools)
+#install_github("richardli/surveyPrev")
+options(knitr.table.format = "latex") # For kable tables to write LaTeX table directly
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r echo=TRUE, message=FALSE}
+#data
+data <- read_csv("C:/Users/latera/OneDrive - UW/Desktop/Proposal/Thesis/Codes/Data/416582.csv")
+ data_2019 <- data 
+ data_2019 <- data_2019 %>% filter(
+   age_year == 1
+ )
+
+data_2019 <- data_2019 %>% rename(
+  starta1 = strata
+)
+data_2019 <- data_2019 %>%
+  dplyr::rename(
+    # cluster = V001,
+    # householdID = V002,
+    region = admin_1,
+    # weight = V005,
+    strata = urban,
+    value = mcv1
+  ) 
+data_2019 <- data_2019 %>% dplyr::select(
+  c(cluster,householdID,region,weight,strata,value)
+)
+data_2019 <- data_2019%>% dplyr::rename(
+  v024 = region
+)
+data_2019$strata <- ifelse(data_2019$strata == 1, "urban", "rural")
+data_2019 <- as.data.frame(data_2019)
+data_2019$strata <- as.factor(data_2019$strata)
+data_2019$v024 <- as.factor(data_2019$v024)
+
+```
+
+Assessing this data tells us, `r nrow(data)` observations, `r length(unique(data$cluster))`, and `r length(unique(data$householdID))`. 
+
+The following code reads the geographic information. 
+
+```{r echo=TRUE, message=FALSE, results = 'hide'}
+
+geo <- st_read("ETGE81FL/ETGE81FL.shp")
+
+# geo <- geo %>%
+#   mutate(ADM1NAME = case_when(
+#     ADM1NAME == "Afar Region" ~ "Afar",
+#     ADM1NAME == "Amhara Region" ~ "Amhara",
+#     ADM1NAME == "Oromiya Region" ~ "Oromia",
+#     ADM1NAME == "Tigray Region" ~ "Tigray",
+#     ADM1NAME == "Benishangul Gumuz" ~ "Benishangul Gumz",
+#     ADM1NAME == "SNNPR" ~ "SNNP",
+#     ADM1NAME == "Gambella" ~ "Gambela",
+#     TRUE ~ ADM1NAME  # Keeps all other values as they are
+#   ))
+```
+
+
+
+```{r echo=TRUE, message=FALSE, fig.cap="The cluster distribution of DHS 2016 in Ethiopia"}
+ggplot(data = geo) +
+  geom_sf(fill = NA, 
+          color = "steelblue", 
+          size = 2, 
+          shape = 1) +  
+  theme_minimal() +
+  labs(title = "",
+       caption = "",
+       x = "Longitude",
+       y = "Latitude") +
+   theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.background = 
+          element_rect(fill = "transparent"),
+        legend.box.background = 
+          element_rect(color = "transparent"),
+        plot.title = element_text(color = "black", 
+                                  size = 15, 
+                                  face = "bold"),
+        plot.subtitle = element_text(color = "black", 
+                                     size = 12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank()) + 
+  coord_sf()
+
+
+```
+
+
+
+```{r}
+merged_data_new <- left_join(data_2019, geo, by = c("cluster" = "DHSCLUST"))
+```
+
+
+```{r echo=TRUE, message=FALSE, results = 'hide'}
+data_ethiopia_1 <- 
+  st_read("ETH_wereda_Bofed_CSA_2021/ETH_wereda_Bofed_CSA_2021.shp")
+
+
+drc1_sf <- st_as_sf(merged_data_new, coords = c("LONGNUM", "LATNUM"), crs = st_crs(data_ethiopia_1), remove = FALSE)
+
+merged_data_sf <- st_join(data_ethiopia_1, drc1_sf, join = st_contains)
+
+# st_write(merged_data_sf, "shapefile_containing_individual_and _cluster_level_data.shp")
+
+```
+
+In the following code we will create admin-1 and admin-2 datasets. 
+
+
+```{r echo=TRUE, message=FALSE}
+admin1_boundaries <- data_ethiopia_1 %>%
+  group_by(ADM1_EN) %>%
+  dplyr::summarize(geometry = st_union(geometry))
+
+admin2_boundaries <- data_ethiopia_1 %>%
+  group_by(ADM2_EN, ADM1_EN) %>%
+  dplyr::summarize(geometry = st_union(geometry))
+```
+
+```{r}
+df <- st_drop_geometry(merged_data_sf)
+df2 <- df %>%
+  filter(!is.na(value))
+adm2_summary <- df2 %>%
+  group_by(ADM2_EN) %>%
+  summarise(
+    distinct_vals = n_distinct(value),
+    # mark TRUE if only one distinct value (either all 0s or all 1s)
+    homogeneous = (distinct_vals == 1),
+    .groups = "drop"
+  )
+total_units       <- nrow(adm3_summary)
+homogeneous_units <- sum(adm3_summary$homogeneous)
+pct_homogeneous   <- homogeneous_units / total_units * 100
+
+pct_homogeneous
+homogeneous_units
+total_units
+```
+
+
+```{r}
+cluster_agg <- merged_data_sf %>%
+  st_drop_geometry() %>%
+  group_by(cluster) %>%
+  summarise(n_sample = sum(!is.na(value)))
+cluster_points <- drc1_sf %>%
+  group_by(cluster) %>%
+  slice(1) %>%
+  ungroup()
+cluster_counts <- left_join(cluster_points, cluster_agg, by = "cluster")
+adm2_boundaries <- data_ethiopia_1 %>%
+  group_by(ADM2_EN) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf()
+
+adm1_boundaries <- data_ethiopia_1 %>%
+  group_by(ADM1_EN) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf()
+adm3_sample_data <- cluster_counts %>%
+  st_join(
+    data_ethiopia_1 %>% select(ADM3_EN),  
+    join = st_within
+  ) %>%
+  st_drop_geometry() %>%
+  group_by(ADM3_EN) %>%
+  summarise(total_samples = sum(n_sample, na.rm = TRUE)) %>%
+  right_join(data_ethiopia_1, by = "ADM3_EN") %>%  
+  st_as_sf()
+
+
+
+adm2_sample_data <- cluster_counts %>%
+  st_join(
+    adm2_boundaries %>% select(ADM2_EN),  
+    join = st_within
+  ) %>%
+  st_drop_geometry() %>%
+  group_by(ADM2_EN) %>%
+  summarise(total_samples = sum(n_sample, na.rm = TRUE)) %>%
+  right_join(adm2_boundaries, by = "ADM2_EN") %>%  
+  st_as_sf()
+p1 <- ggplot() +
+  geom_sf(
+    data = adm3_sample_data,
+    aes(fill = total_samples),
+    color = "black", 
+    linewidth = 0.15
+  ) +
+  
+  #ADM2 boundaries (bold black lines)
+  
+  
+  geom_sf(
+  data = adm1_boundaries,
+  fill = NA,
+  color = "black",
+  alpha = 0.7,
+  linewidth = 0.7
+) +
+geom_sf(
+  data = adm1_boundaries,
+  color = "gray34",
+  linewidth = 1.1,
+  alpha = 0.3
+) +
+  geom_sf(
+    data = cluster_counts,
+    color = "red",
+    # shape=21,
+    alpha=0.65,
+    size = 1.5
+  ) +
+  scale_fill_viridis_c(
+    option = "mako",
+    name = "Samples: ",
+    direction = -1,
+    na.value = "#f8f9fa", 
+    breaks = scales::pretty_breaks(n = 6),
+    guide = guide_colorbar(
+      barwidth = 12,
+      barheight = 0.8,
+      title.position = "top"
+    )
+  ) +
+  labs(
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  theme_void(base_size = 14) +
+  theme(
+    plot.title = element_text(
+      size = 22,
+      face = "bold",
+      hjust = 0.5,
+      margin = margin(b = 8),
+      color = "#2d3748"
+    ),
+    plot.subtitle = element_text(
+      size = 16,
+      hjust = 0.5,
+      margin = margin(b = 20),
+      color = "#4a5568"
+    ),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.margin = unit(c(1, 1, 1.5, 1), "cm")
+  )
+p2 <- ggplot() +
+  geom_sf(
+    data = adm2_sample_data,
+    aes(fill = total_samples),
+    color = "black",  # Thin white boundaries between ADM3 units
+    linewidth = 0.15
+  ) +
+  geom_sf(
+  data = adm1_boundaries,
+  fill = NA,
+  color = "black",
+  alpha = 0.7,
+  linewidth = 0.7
+) +
+geom_sf(
+  data = adm1_boundaries,
+  color = "gray34",
+  linewidth = 1.1,
+  alpha = 0.3
+) +
+  geom_sf(
+    data = cluster_counts,
+    color = "red",
+    # shape=21,
+    alpha=0.65,
+    size = 1.5
+  ) +
+  scale_fill_viridis_c(
+    option = "mako",
+    name = "Samples: ",
+    direction = -1,
+    na.value = "#f8f9fa",  # Light gray for districts with no samples
+    breaks = scales::pretty_breaks(n = 6),
+    guide = guide_colorbar(
+      barwidth = 12,
+      barheight = 0.8,
+      title.position = "top"
+    )
+  ) +
+  labs(
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  theme_void(base_size = 14) +
+  theme(
+    plot.title = element_text(
+      size = 22,
+      face = "bold",
+      hjust = 0.5,
+      margin = margin(b = 8),
+      color = "#2d3748"
+    ),
+    plot.subtitle = element_text(
+      size = 16,
+      hjust = 0.5,
+      margin = margin(b = 20),
+      color = "#4a5568"
+    ),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.margin = unit(c(1, 1, 1.5, 1), "cm")
+  )
+
+
+final_plot <- p1 + p2 +
+  plot_layout(ncol = 2) 
+print(final_plot)
+
+
+ ggsave("map1.png", width = 14, height = 10, bg = "white")
+
+
+
+final_plot
+
+```
+
+
+
+
+```{r}
+merged_non_na <- merged_data_sf %>% filter(
+  !is.na(value)
+)
+
+design_based <- svydesign(
+  ids = ~cluster + householdID, 
+  weights = ~weight, 
+  starta = ~strata,
+  data = merged_non_na
+)
+
+design_based_estimates <- svyby(~value, ~ADM3_EN, design_based, svymean)
+
+design_based_estimates_shp <- left_join(data_ethiopia_1, design_based_estimates, 
+                                        by="ADM3_EN")
+
+# st_write(design_based_estimates_shp, "result/direct_estimate_admin3.shp")
+```
+
+
+```{r}
+design_based_estimates_shp$value <- design_based_estimates_shp$value * 100
+design_based_estimates_shp$se <- design_based_estimates_shp$se * 100
+plot2 <- ggplot() +
+  geom_sf(data = subset(design_based_estimates_shp_admin2, !is.na(value) & se > 0.0005), 
+          aes(fill = value), color = "white", lwd = 0.05) +
+  scale_fill_viridis(
+    name = "Measles Coverage (%)",
+    option = "mako",  
+    begin = 0.15,
+    end = 0.85,
+    direction = -1,
+    na.value = "transparent",
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, "mm"),
+      barwidth = unit(80, "mm"),
+      title.position = "top",
+      title.hjust = 0.5,
+      frame.colour = "gray30",
+      ticks.colour = "gray30")
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(data = subset(design_based_estimates_shp_admin2, se < 0.0005),
+          fill = "#E63946", color = "white", lwd = 0.05) +  # Scientific red
+  geom_sf(data = subset(design_based_estimates_shp_admin2, is.na(value)),
+          fill = "#495057", color = "white", lwd = 0.05) +  
+  geom_sf(
+  data = adm1_boundaries,
+  fill = NA,
+  color = "black",
+  alpha = 0.7,
+  linewidth = 1.1
+) +
+  theme_void() +
+  theme(
+    # plot.background = element_rect(fill = "#F8F9FA", color = NA),
+    # panel.background = element_rect(fill = "#F8F9FA", color = NA),
+    legend.position = "bottom",
+    legend.title = element_text(
+      size = 20,
+      face = "bold",
+      margin = margin(b = 3)),
+    legend.text = element_text(size = 17),
+    plot.title = element_text(
+      face = "bold",
+      size = 20,
+      hjust = 0.5,
+      color = "#2C3E50",
+      margin = margin(b = 8)),
+    plot.subtitle = element_text(
+      size = 12,
+      hjust = 0.5,
+      color = "#7F8C8D",
+      margin = margin(b = 15)),
+    plot.caption = element_text(
+      size = 9,
+      color = "#95A5A6",
+      hjust = 0.98,
+      margin = margin(t = 10))
+  ) +
+  labs(
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  annotate("text", 
+           x = Inf, y = Inf,
+           label = c("Missing Data", "Zero Standard Error"),
+           color = c("#2F4F4F", "#DC143C"),
+           hjust = c(1.1, 1.1),
+           vjust = c(1.5, 3),
+           size = 8,
+           fontface = "bold")
+
+
+ggsave("measles_coverage_final_admin1_sc.png",
+       width = 13, height = 9, dpi = 400, bg = "white")
+```
+
+
+```{r}
+
+design_based <- svydesign(
+  ids = ~cluster + householdID, 
+  weights = ~weight, 
+  starta = ~strata,
+  data = merged_non_na
+)
+
+design_based_estimates_admin2 <- svyby(~value, ~ADM2_EN, design_based, svymean)
+
+design_based_estimates_shp_admin2 <- left_join(adm2_boundaries, design_based_estimates_admin2, 
+                                        by="ADM2_EN")
+
+st_write(design_based_estimates_shp_admin2, "result/direct_estimate_admin2.shp")
+
+
+```
+
+
+```{r}
+design_based_estimates_shp_admin2$value <- design_based_estimates_shp_admin2$value * 100
+design_based_estimates_shp_admin2$se <- design_based_estimates_shp_admin2$se * 100
+
+#
+# plot2 <- ggplot() +
+#   # Main coverage data
+#   geom_sf(data = subset(design_based_estimates_shp_admin2, !is.na(value) & se != 0), 
+#           aes(fill = value), color = "white", lwd = 0.05) +
+#    scico::scale_fill_scico(
+#         palette = "navia",             #viridis
+#         direction = -1,               
+#         begin = 0.1,                  
+#          name = "DPT1",
+#         end = 0.9,
+#         guide = guide_colorbar(
+#             direction = "horizontal",
+#             barwidth = unit(8, "mm"),
+#             barheight = unit(100, "mm"),
+#             title.position = "top",
+#             frame.colour = "#404040",
+#             ticks = FALSE,
+#             title.theme = element_text(
+#                 size = 10,
+#                 color = "#404040",
+#                 face = "italic"
+#             )
+#         )
+#     ) +
+#   geom_sf(data = subset(design_based_estimates_shp_admin2, se == 0),
+#           fill = "#E63946", color = "white", lwd = 0.05) +  
+#   geom_sf(data = subset(design_based_estimates_shp_admin2, is.na(value)),
+#           fill = "#495057", color = "white", lwd = 0.05) +  
+#   
+#   #professional north arrow
+#   
+#    geom_sf(
+#   data = adm1_boundaries,
+#   fill = NA,
+#   color = "black",
+#   alpha = 0.7,
+#   linewidth = 1.1
+# ) +
+#
+#   # annotation_scale(
+#   #   location = "bl",
+#   #   style = "ticks",
+#   #   line_width = 0.4,
+#   #   text_cex = 0.9,
+#   #   height = unit(0.2, "cm"),
+#   #   pad_x = unit(0.2, "cm"),
+#   #   pad_y = unit(0.2, "cm")
+#   # ) +
+#   
+#   theme_void() +
+#   theme(
+#     # plot.background = element_rect(fill = "#F8F9FA", color = NA),
+#     # panel.background = element_rect(fill = "#F8F9FA", color = NA),
+#     legend.position = c(-0.01, 0.5),
+#         legend.title = element_text(
+#             size = 11,
+#             color = "#404040",
+#             margin = margin(b = 4)
+#         ),
+#     legend.text = element_text(size = 17),
+#   
+#     plot.title = element_text(
+#       face = "bold",
+#       size = 20,
+#       hjust = 0.5,
+#       color = "#2C3E50",
+#       margin = margin(b = 8)),
+#     plot.subtitle = element_text(
+#       size = 12,
+#       hjust = 0.5,
+#       color = "#7F8C8D",
+#       margin = margin(b = 15)),
+#     plot.caption = element_text(
+#       size = 9,
+#       color = "#95A5A6",
+#       hjust = 0.98,
+#       margin = margin(t = 10))
+#   ) +
+#   
+#   labs(
+#     title = "",
+#     subtitle = "",
+#     caption = ""
+#   ) +
+#   
+#   annotate("text", 
+#            x = Inf, y = Inf,
+#            label = c("Missing Data", "Zero Standard Error"),
+#            color = c("#2F4F4F", "#DC143C"),
+#            hjust = c(1.1, 1.1),
+#            vjust = c(1.5, 3),
+#            size = 8,
+#            fontface = "bold")
+
+final_plot <- plot1 + plot2 +
+  plot_layout(ncol = 2) 
+print(final_plot)
+
+ggsave("corrected_both_admin.png", 
+       width = 16, height = 12, dpi = 400, bg = "white")
+```
+
+```{r}
+design_based <- svydesign(
+  ids = ~cluster + householdID, 
+  weights = ~weight, 
+  strata = ~strata,
+  data = merged_non_na
+)
+design_based_estimates_admin1 <- svyby(~value, ~ADM1_EN, design_based,vartype  = c("se", "ci"), svymean)
+
+design_based_estimates_shp_admin1 <- left_join(adm1_boundaries, design_based_estimates_admin1, 
+                                        by="ADM1_EN")
+
+design_based_estimates_shp_admin1$value <- design_based_estimates_shp_admin1$value * 100
+design_based_estimates_shp_admin1$se <- design_based_estimates_shp_admin1$se * 100
+design_based_estimates_shp_admin1
+
+names(design_based_estimates_shp_admin1)
+plot_data <- design_based_estimates_shp_admin1 |>
+  mutate(
+    ADM1_EN = fct_reorder(ADM1_EN, value),
+    ci_lower = value - 1.96 * se,
+    ci_upper = value + 1.96 * se,
+    above_90 = ifelse(value > 90, "Above 90%", "Below 90%")
+  )
+plot_data <- st_drop_geometry(plot_data)
+
+plot_data$ci_upper <- pmin(plot_data$ci_upper, 100)
+ggplot(plot_data, aes(x = value, y = ADM1_EN, color = above_90)) +
+  # ci
+  geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper), 
+                 height = 0.2, size = 0.8, alpha = 0.7) +
+  # pe
+  geom_point(size = 3, shape = 19) +
+  geom_vline(xintercept = 90, linetype = "dashed", color = "#e63946", size = 0.8) +
+  geom_text(aes(label = scales::percent(value/100, accuracy = 1)), 
+            hjust = -0.4, vjust=-0.1, size = 3, family = "roboto", show.legend = FALSE) +
+  scale_color_manual(values = c("Above 90%" = "#2a9d8f", "Below 90%" = "#264653")) +
+  scale_x_continuous(
+  breaks = c(seq(0, 100, by = 20), 90),
+  labels = scales::percent_format(scale = 1)
+) +
+  labs(title = "",
+       subtitle = "",
+       x = "Estimated Coverage (%)",
+       y = "",
+       caption = "",
+       color = "Coverage Status") +
+  theme_minimal(base_size = 12, base_family = "roboto") +
+  theme(
+    plot.title = element_markdown(hjust = 0.5, margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray40", size = 14),
+    plot.caption = element_text(color = "gray50", hjust = 0.95, margin = margin(t = 15)),
+    panel.grid.major.y = element_line(color = "gray90", size = 0.2),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(color = "gray30"),
+    axis.title.x = element_text(margin = margin(t = 10), color = "gray30"),
+    legend.position = "top",
+    legend.justification = "right",
+    legend.title = element_text(size = 10),
+    plot.background = element_rect(fill = "#ffffff", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.margin = unit(c(1.5, 2, 1, 2), "cm")
+  ) 
+```
+
+```{r}
+ggsave("admin1_coverage.png", 
+       width = 8, height = 5, dpi = 400, bg = "white")
+```
+
+
+```{r}
+
+merged_data_sf <- st_join(admin2_boundaries, drc1_sf, join = st_contains)
+
+merged_data_sf_id <- merged_data_sf %>%
+  mutate(ADM2_ID = as.integer(as.factor(ADM2_EN)))
+
+adm2_boundaries_id <- merged_data_sf_id %>%
+  group_by(ADM2_EN, ADM2_ID) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf()
+
+adm2_boundaries_id$ADM2_ID_iid <- adm2_boundaries_id$ADM2_ID
+
+binom_df <- merged_data_sf_id %>% 
+  group_by(cluster,ADM2_ID) %>% 
+  summarise(y = sum(value, na.rm = T), 
+            N = length(which(!(is.na(value)))),
+            ADM2_EN = ADM2_EN %>% nth(1), 
+            ADM2_ID = ADM2_ID %>% nth(1),
+            urban = as.numeric(nth(strata, 1) == "urban"), 
+            rural = as.numeric(nth(strata, 1) == "rural")) %>%
+  as.data.frame()
+
+binom_df$ADM2_ID_iid <- binom_df$ADM2_ID
+
+
+binom_sf <- st_as_sf(binom_df)
+
+nb_adm1 <- poly2nb(adm2_boundaries_id, row.names = adm2_boundaries_id$ADM2_ID)
+adj_matrix <- nb2mat(nb_adm1, style = "B", zero.policy = TRUE)
+adj_list_adm1 <- inla.read.graph(adj_matrix)
+
+
+formula <- y ~ urban + rural - 1 +
+  f(ADM2_ID, model = "bym2", graph = adj_list_adm1) 
+
+binom_df$y[binom_df$N == 0] <- NA
+
+result <- inla(formula = formula, 
+               Ntrials = N,
+               data = binom_df,
+               family = "betabinomial",
+               control.predictor = list(compute = TRUE),
+               control.compute = list(return.marginals = TRUE,
+                                      config = TRUE,
+                                      return.marginals.predictor = TRUE))
+
+
+# urban_prop is calculated from .tif file below
+
+
+files <- c(
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R9_C23.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R9_C22.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R8_C23.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R8_C22.tif"
+)
+
+# SpatRasters
+smod_list <- lapply(files, rast)
+
+# Mosaic them into a single SpatRaster
+# do.call(...) helps combine them
+smod_mosaic <- do.call(mosaic, smod_list)
+smod_mosaic
+
+eth_adm2 <- adm2_boundaries_id
+eth_adm2_moll <- st_transform(eth_adm2, crs(smod_mosaic))
+eth_vect_moll <- vect(eth_adm2_moll)
+smod_crop <- crop(smod_mosaic, eth_vect_moll)
+smod_ethiopia <- mask(smod_crop, eth_vect_moll)
+plot(smod_ethiopia)
+reclass_mat <- matrix(c(
+  10, 0,  # Water -> 0
+  11, 0,  # Very low density rural -> 0
+  12, 0,  # Low density rural -> 0
+  13, 0,  # Rural cluster -> 0
+  21, 1,  # Suburban/peri-urban -> 1
+  22, 1,  # Semi-dense cluster -> 1
+  23, 1,  # Dense urban cluster -> 1
+  30, 1   # Urban centre -> 1
+), ncol=2, byrow=TRUE)
+#reclassify
+urban_mask <- classify(smod_ethiopia, reclass_mat, include.lowest=FALSE, right=NA)
+
+eth_adm2$urban_prop <- exact_extract(
+  urban_mask, 
+  eth_adm2,
+  fun = function(values, coverage_fraction) {
+    weighted.mean(values, coverage_fraction, na.rm = TRUE)
+  }
+)
+urban_prop <- data.frame(
+  urban_proportion <- eth_adm2$urban_prop,
+  ADM2_ID <- eth_adm2$ADM2_ID,
+  ADM2_EN <- eth_adm2$ADM2_EN
+)
+
+# ggplot(eth_adm2) +
+#   geom_sf(aes(fill = urban_prop), color = "white", size=0.2) +
+#   scale_fill_viridis_c(option="C", name="Urban Fraction") +
+#   labs(title="Urban Proportion by ADM2 (GHSL SMOD)") +
+#   theme_minimal()
+
+# urban_prop <- binom_df %>%
+#   group_by(ADM2_EN, ADM2_ID) %>%
+#   summarize(
+#     total_observations = n(),
+#     urban_count = sum(urban == 1, na.rm = TRUE),
+#     urban_proportion = mean(urban == 1, na.rm = TRUE)
+#   ) %>%
+#   ungroup()
+
+urban_prop$urban_proportion[is.nan(urban_prop$urban_proportion)] <- 0
+nsamp <- 1000
+samp <- inla.posterior.sample(n = nsamp, result = result)
+region_idx <- which(rownames(samp[[1]]$latent) %>% 
+                      str_detect("ADM2"))[1:length(unique(binom_df$ADM2_ID))]
+
+urban_idx <- which(rownames(samp[[1]]$latent) %>% str_detect("urban"))
+rural_idx <- which(rownames(samp[[1]]$latent) %>% str_detect("rural"))
+
+region_mat <- matrix(0, nrow = length(region_idx), ncol = nsamp)
+urban_mat <- matrix(0, nrow = 1, ncol = nsamp)
+rural_mat <- matrix(0, nrow = 1, ncol = nsamp)
+# matrix with posterior samples
+for (i in 1:nsamp) {
+  region_mat[,i] <- samp[[i]]$latent[region_idx]
+  urban_mat[,i] <- samp[[i]]$latent[urban_idx]
+  rural_mat[,i] <- samp[[i]]$latent[rural_idx]
+}
+samp_mat_urban <- region_mat + urban_mat[rep(1, nrow(region_mat)),]
+samp_mat_rural <- region_mat + rural_mat[rep(1, nrow(region_mat)),]
+expit_samp_mat_urban <- expit(samp_mat_urban)
+expit_samp_mat_rural <- expit(samp_mat_rural)
+expit_samp_mat <- (urban_prop$urban_proportion * expit_samp_mat_urban + (1-urban_prop$urban_proportion) * expit_samp_mat_rural)
+
+samp_betabinom <- expit_samp_mat
+
+bino <- data.frame(
+  ADM2_ID = sort(unique(adm2_boundaries_id$ADM2_ID)),
+  ADM2_EN = sort(unique(adm2_boundaries_id$ADM2_EN)),
+  med_beta_bino = apply(samp_betabinom, 1, median),
+  lower_beta_bino = apply(samp_betabinom, 1, quantile, 0.025),
+  upper_beta_bino = apply(samp_betabinom, 1, quantile, 0.975),
+  sd_beta_bino = apply(samp_betabinom, 1, sd)
+)
+
+#data_ethiopia_1 is a shape file for admin-2
+plot_plot <- left_join(adm2_boundaries_id, bino, by="ADM2_ID")
+
+plot_plot$med_beta_bino <- plot_plot$med_beta_bino * 100
+plot_plot$sd_beta_bino <- plot_plot$sd_beta_bino * 100
+
+st_write(plot_plot, "result/unit_level_estimate_admin2_urban_new_new.shp")
+ggplot() +
+  #coverage data
+  geom_sf(data = subset(plot_plot, !is.na(med_beta_bino) & sd_beta_bino != 0), 
+          aes(fill = med_beta_bino), color = "white", lwd = 0.05) +
+  scale_fill_viridis(
+    name = "Measles Coverage (%)",
+    option = "mako", 
+    direction = -1,
+    begin = 0.15,
+    end = 0.85,
+    na.value = "transparent",
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, "mm"),
+      barwidth = unit(80, "mm"),
+      title.position = "top",
+      title.hjust = 0.5,
+      frame.colour = "gray30",
+      ticks.colour = "gray30")
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(data = subset(plot_plot, sd_beta_bino == 0),
+          fill = "#E63946", color = "white", lwd = 0.05) +  
+  geom_sf(data = subset(plot_plot, is.na(med_beta_bino)),
+          fill = "#495057", color = "white", lwd = 0.05) +  
+  geom_sf(
+  data = adm1_boundaries,
+  fill = NA,
+  color = "black",
+  alpha = 0.7,
+  linewidth = 1.1
+) +
+  
+#this NEW layer right after existing admin1 layer
+
+  # Scale bar with refined style
+  # annotation_scale(
+  #   location = "bl",
+  #   style = "ticks",
+  #   line_width = 0.4,
+  #   text_cex = 0.9,
+  #   height = unit(0.2, "cm"),
+  #   pad_x = unit(0.2, "cm"),
+  #   pad_y = unit(0.2, "cm")
+  # ) +
+  theme_void() +
+  theme(
+    # plot.background = element_rect(fill = "#F8F9FA", color = NA),
+    # panel.background = element_rect(fill = "#F8F9FA", color = NA),
+    legend.position = "bottom",
+    legend.title = element_text(
+      size = 20,
+      face = "bold",
+      margin = margin(b = 3)),
+    legend.text = element_text(size = 17),
+  
+    plot.title = element_text(
+      face = "bold",
+      size = 20,
+      hjust = 0.5,
+      color = "#2C3E50",
+      margin = margin(b = 8)),
+    plot.subtitle = element_text(
+      size = 12,
+      hjust = 0.5,
+      color = "#7F8C8D",
+      margin = margin(b = 15)),
+    plot.caption = element_text(
+      size = 9,
+      color = "#95A5A6",
+      hjust = 0.98,
+      margin = margin(t = 10))
+  ) +
+  labs(
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) 
+
+
+#here we have used urban prop form GSHL
+ggsave("measles_coverage_final_admin2_cluster_level_new.png", 
+       width = 16, height = 12, dpi = 400, bg = "white")
+```
+
+
+```{r}
+ggplot(eth_adm3) +
+  geom_sf(aes(fill = urban_prop), color = "gray70", size = 0.2) +
+  scale_fill_distiller(
+    palette   = "PuBu",   
+    direction = 1,
+    name      = "Urban Fraction",
+    guide = guide_colorbar(
+      barwidth  = 15,
+      barheight = 1
+    )
+  ) +
+  labs(
+    title    = "",
+    subtitle = "",
+    caption  = ""
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title       = element_text(face = "bold"),
+    plot.subtitle    = element_text(margin = margin(b = 10)),
+    axis.title       = element_blank(),
+    axis.text        = element_blank(),
+    panel.grid       = element_blank(),
+    legend.position  = "bottom"
+  )
+
+ggsave("urban_map_admin3.png", 
+       width = 13, height = 8, dpi = 400, bg = "white")
+```
+
+
+```{r}
+
+
+# ------------------------------------------------------------------------------
+#Convert polygons to centroids
+# ------------------------------------------------------------------------------
+centroids <- st_centroid(adm3_boundaries_id)
+centroids_coords <- st_coordinates(centroids)
+centroids_df <- data.frame(
+  node    = seq_len(nrow(adm3_boundaries_id)), 
+  ADM2_ID = adm3_boundaries_id$ADM3_ID,        
+  x       = centroids_coords[, 1],          
+  y       = centroids_coords[, 2]       
+)
+
+# ------------------------------------------------------------------------------
+# 2) Build the igraph object and extract edges
+# ------------------------------------------------------------------------------
+graph <- graph_from_adjacency_matrix(as.matrix(adj_matrix), mode = "undirected")
+edges <- as_edgelist(graph)
+edges_df <- data.frame(
+  from = as.integer(edges[, 1]),
+  to   = as.integer(edges[, 2])
+) %>%
+  left_join(centroids_df, by = c("from" = "node")) %>%
+  rename(x = x, y = y) %>%
+  left_join(centroids_df, by = c("to" = "node"), suffix = c("", "_end")) %>%
+  rename(xend = x_end, yend = y_end)
+ggplot() +
+  geom_sf(
+    data  = adm2_boundaries_id, 
+    fill  = "white", 
+    color = "black"
+  ) +
+  geom_segment(
+    data = edges_df,
+    aes(x = x, y = y, xend = xend, yend = yend),
+    color = "red",
+    alpha = 0.7
+  ) +
+  geom_point(
+    data = centroids_df,
+    aes(x = x, y = y),
+    size = 2,
+    alpha=0.6,
+  ) +
+  theme_void()
+
+ggsave("nbstructure_admin3.png", 
+       width = 13, height = 9, dpi = 400, bg = "white")
+
+```
+
+
+
+Repeat the above steps to estimate coverages at admin-3
+
+```{r}
+merged_data_sf <- st_join(data_ethiopia_1, drc1_sf, join = st_contains)merged_data_sf_id <- merged_data_sf %>%
+  mutate(ADM3_ID = as.integer(as.factor(ADM3_EN)))
+adm3_boundaries_id <- merged_data_sf_id %>%
+  group_by(ADM3_ID) %>%
+  slice(1) %>% 
+  ungroup()
+adm3_boundaries_id$ADM3_ID_iid <- adm3_boundaries_id$ADM3_ID
+
+binom_df <- merged_data_sf_id %>% 
+  group_by(cluster,ADM3_ID) %>% 
+  summarise(y = sum(value, na.rm = T), 
+            N = length(which(!(is.na(value)))),
+            ADM3_EN = ADM3_EN %>% nth(1), 
+            ADM3_ID = ADM3_ID %>% nth(1),
+            urban = as.numeric(nth(strata, 1) == "urban"), 
+            rural = as.numeric(nth(strata, 1) == "rural")) %>%
+  as.data.frame()
+
+binom_df$ADM3_ID_iid <- binom_df$ADM3_ID
+
+nb_adm1 <- poly2nb(adm3_boundaries_id, row.names = adm3_boundaries_id$ADM3_ID)
+adj_matrix <- nb2mat(nb_adm1, style = "B", zero.policy = TRUE)
+adj_list_adm1 <- inla.read.graph(adj_matrix)
+formula <- y ~ urban + rural - 1 +
+  f(ADM3_ID, model = "bym2", graph = adj_list_adm1) + 
+  f(ADM3_ID_iid, model = "iid")
+
+binom_df$y[binom_df$N == 0] <- NA
+
+result <- inla(formula = formula, 
+               Ntrials = N,
+               data = binom_df,
+               family = "betabinomial",
+               control.predictor = list(compute = TRUE),
+               control.compute = list(return.marginals = TRUE,
+                                      config = TRUE,
+                                      return.marginals.predictor = TRUE))
+
+
+#urban_prop is calculated from .tif file below
+
+files <- c(
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R9_C23.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R9_C22.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R8_C23.tif",
+  "GHS_SMOD_E2030_GLOBE_R2023A_54009_1000_V2_0_R8_C22.tif"
+)
+smod_list <- lapply(files, rast)
+
+# Mosaic them into a single SpatRaster
+# do.call(...) helps combine them
+smod_mosaic <- do.call(mosaic, smod_list)
+smod_mosaic
+
+eth_adm3 <- adm3_boundaries_id
+eth_adm3_moll <- st_transform(eth_adm3, crs(smod_mosaic))
+eth_vect_moll <- vect(eth_adm3_moll)
+smod_crop <- crop(smod_mosaic, eth_vect_moll)
+smod_ethiopia <- mask(smod_crop, eth_vect_moll)
+plot(smod_ethiopia)
+reclass_mat <- matrix(c(
+  10, 0,  # Water -> 0
+  11, 0,  # Very low density rural -> 0
+  12, 0,  # Low density rural -> 0
+  13, 0,  # Rural cluster -> 0
+  21, 1,  # Suburban/peri-urban -> 1
+  22, 1,  # Semi-dense cluster -> 1
+  23, 1,  # Dense urban cluster -> 1
+  30, 1   # Urban centre -> 1
+), ncol=2, byrow=TRUE)
+
+#reclassify
+urban_mask <- classify(smod_ethiopia, reclass_mat, include.lowest=FALSE, right=NA)
+
+eth_adm3$urban_prop <- exact_extract(
+  urban_mask, 
+  eth_adm3,
+  fun = function(values, coverage_fraction) {
+    weighted.mean(values, coverage_fraction, na.rm = TRUE)
+  }
+)
+urban_prop <- data.frame(
+  urban_proportion <- eth_adm3$urban_prop,
+  ADM3_ID <- eth_adm3$ADM3_ID,
+  ADM3_EN <- eth_adm3$ADM3_EN
+)
+
+
+#urban variable is having lots of effect
+# the estimation is being drawn to the mean value which is around 60%
+# maybe the scarsity in the clsuter informaiton is leading to this
+
+# ggplot(eth_adm3) +
+#   geom_sf(aes(fill = urban_prop), color = "white", size=0.2) +
+#   scale_fill_viridis_c(option="C", name="Urban Fraction") +
+#   labs(title="Urban Proportion by ADM2 (GHSL SMOD)") +
+#   theme_minimal()
+
+# urban_prop <- binom_df %>%
+#   group_by(ADM2_EN, ADM2_ID) %>%
+#   summarize(
+#     total_observations = n(),
+#     urban_count = sum(urban == 1, na.rm = TRUE),
+#     urban_proportion = mean(urban == 1, na.rm = TRUE)
+#   ) %>%
+#   ungroup()
+urban_prop$urban_proportion[is.nan(urban_prop$urban_proportion)] <- 0
+nsamp <- 1000
+samp <- inla.posterior.sample(n = nsamp, result = result)
+region_idx <- which(rownames(samp[[1]]$latent) %>% 
+                      str_detect("ADM3"))[1:length(unique(binom_df$ADM3_ID))]
+
+urban_idx <- which(rownames(samp[[1]]$latent) %>% str_detect("urban"))
+rural_idx <- which(rownames(samp[[1]]$latent) %>% str_detect("rural"))
+
+region_mat <- matrix(0, nrow = length(region_idx), ncol = nsamp)
+urban_mat <- matrix(0, nrow = 1, ncol = nsamp)
+rural_mat <- matrix(0, nrow = 1, ncol = nsamp)
+for (i in 1:nsamp) {
+  region_mat[,i] <- samp[[i]]$latent[region_idx]
+  urban_mat[,i] <- samp[[i]]$latent[urban_idx]
+  rural_mat[,i] <- samp[[i]]$latent[rural_idx]
+}
+samp_mat_urban <- region_mat + urban_mat[rep(1, nrow(region_mat)),]
+samp_mat_rural <- region_mat + rural_mat[rep(1, nrow(region_mat)),]
+expit_samp_mat_urban <- expit(samp_mat_urban)
+expit_samp_mat_rural <- expit(samp_mat_rural)
+expit_samp_mat <- (urban_prop$urban_proportion * expit_samp_mat_urban + (1-urban_prop$urban_proportion) * expit_samp_mat_rural)
+
+samp_betabinom <- expit_samp_mat
+
+
+bino <- data.frame(
+  ADM3_ID = sort(unique(adm3_boundaries_id$ADM3_ID)),
+  ADM3_EN = sort(unique(adm3_boundaries_id$ADM3_EN)),
+  med_beta_bino = apply(samp_betabinom, 1, median),
+  lower_beta_bino = apply(samp_betabinom, 1, quantile, 0.025),
+  upper_beta_bino = apply(samp_betabinom, 1, quantile, 0.975),
+  sd_beta_bino = apply(samp_betabinom, 1, sd)
+)
+plot_plot_adm3 <- left_join(adm3_boundaries_id, bino, by="ADM3_ID")
+
+plot_plot_adm3$med_beta_bino <- plot_plot_adm3$med_beta_bino * 100
+plot_plot_adm3$sd_beta_bino <- plot_plot_adm3$sd_beta_bino * 100
+
+st_write(plot_plot_adm3, "result/unit_level_estimate_admin3_urban_new.shp")
+# Create polished visualization
+ggplot() +
+  geom_sf(data = subset(plot_plot, !is.na(med_beta_bino) & sd_beta_bino != 0), 
+          aes(fill = med_beta_bino), color = "white", lwd = 0.05) +
+  scale_fill_viridis(
+    name = "Measles Coverage (%)",
+    option = "mako",  
+    direction = -1,
+    begin = 0.15,
+    end = 0.85,
+    na.value = "transparent",
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, "mm"),
+      barwidth = unit(80, "mm"),
+      title.position = "top",
+      title.hjust = 0.5,
+      frame.colour = "gray30",
+      ticks.colour = "gray30")
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(data = subset(plot_plot, sd_beta_bino == 0),
+          fill = "#E63946", color = "white", lwd = 0.05) +  
+  geom_sf(data = subset(plot_plot, is.na(med_beta_bino)),
+          fill = "#495057", color = "white", lwd = 0.05) +  
+   geom_sf(
+  data = adm1_boundaries,
+  fill = NA,
+  color = "black",
+  alpha = 0.7,
+  linewidth = 1.1
+) +
+#NEW layer right after existing admin1 layer
+
+  # Scale bar with refined style
+  # annotation_scale(
+  #   location = "bl",
+  #   style = "ticks",
+  #   line_width = 0.4,
+  #   text_cex = 0.9,
+  #   height = unit(0.2, "cm"),
+  #   pad_x = unit(0.2, "cm"),
+  #   pad_y = unit(0.2, "cm")
+  # ) +
+  theme_void() +
+  theme(
+    # plot.background = element_rect(fill = "#F8F9FA", color = NA),
+    # panel.background = element_rect(fill = "#F8F9FA", color = NA),
+    legend.position = "bottom",
+    legend.title = element_text(
+      size = 20,
+      face = "bold",
+      margin = margin(b = 3)),
+    legend.text = element_text(size = 17),
+  
+    plot.title = element_text(
+      face = "bold",
+      size = 20,
+      hjust = 0.5,
+      color = "#2C3E50",
+      margin = margin(b = 8)),
+    plot.subtitle = element_text(
+      size = 12,
+      hjust = 0.5,
+      color = "#7F8C8D",
+      margin = margin(b = 15)),
+    plot.caption = element_text(
+      size = 9,
+      color = "#95A5A6",
+      hjust = 0.98,
+      margin = margin(t = 10))
+  ) +
+  labs(
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) 
+
+
+#here we have used urban prop form GSHL
+ggsave("measles_coverage_final_admin3_cluster_level_new.png", 
+       width = 16, height = 12, dpi = 400, bg = "white")
+```
+
+
+Admin 3 no urban and rural considerations
+
+
+
+```{r}
+
+merged_data_sf_id <- merged_data_sf %>%
+  mutate(ADM3_ID = as.integer(as.factor(ADM3_EN)))
+
+adm3_boundaries_id <- merged_data_sf_id %>%
+  group_by(ADM3_ID) %>%
+  slice(1) %>%
+  ungroup()
+
+adm3_boundaries_id$ADM3_ID_iid <- adm3_boundaries_id$ADM3_ID
+
+binom_df <- merged_data_sf_id %>%
+  group_by(cluster, ADM3_ID) %>%
+  summarise(
+    y       = sum(value, na.rm = TRUE),
+    N       = sum(!is.na(value)),
+    ADM3_EN = nth(ADM3_EN, 1),
+    ADM3_ID = nth(ADM3_ID, 1),
+    .groups = "drop"
+  ) %>%
+  as.data.frame()
+
+binom_df$ADM3_ID_iid <- binom_df$ADM3_ID
+binom_df$y[binom_df$N == 0] <- NA
+
+nb_adm3 <- poly2nb(adm3_boundaries_id, row.names = adm3_boundaries_id$ADM3_ID)
+adj_matrix <- nb2mat(nb_adm3, style = "B", zero.policy = TRUE)
+adj_list_adm3 <- inla.read.graph(adj_matrix)
+
+formula <- y ~ -1 + 
+  f(ADM3_ID, model = "bym2", graph = adj_list_adm3) +
+  f(ADM3_ID_iid, model = "iid")
+
+result <- inla(
+  formula         = formula,
+  family          = "betabinomial",
+  Ntrials         = binom_df$N,
+  data            = binom_df,
+  control.predictor = list(compute = TRUE),
+  control.compute   = list(
+    return.marginals           = TRUE,
+    config                     = TRUE,
+    return.marginals.predictor = TRUE
+  )
+)
+
+nsamp <- 1000
+samp  <- inla.posterior.sample(n=nsamp, result=result)
+
+region_idx <- which(rownames(samp[[1]]$latent) %>% 
+                      str_detect("ADM3"))[1:length(unique(binom_df$ADM3_ID))]
+
+region_names <- rownames(samp[[1]]$latent)[region_idx]
+
+region_mat <- matrix(0, nrow = length(region_idx), ncol = nsamp)
+
+for (i in seq_len(nsamp)) {
+  region_mat[, i] <- samp[[i]]$latent[region_idx]
+}
+
+combined_mat <- region_mat
+
+n_region <- length(region_idx)
+samp_mat <- matrix(0, nrow=n_region, ncol=nsamp)
+
+for (r in seq_len(n_region)) {
+  for (i in seq_len(nsamp)) {
+    samp_mat[r, i] <- combined_mat[r, i]
+  }
+}
+
+expit_samp_mat <- 1 / (1 + exp(-samp_mat))
+
+med_vals   <- apply(expit_samp_mat, 1, median)
+lower_vals <- apply(expit_samp_mat, 1, quantile, 0.025)
+upper_vals <- apply(expit_samp_mat, 1, quantile, 0.975)
+sd_vals    <- apply(expit_samp_mat, 1, sd)
+
+bino <- data.frame(
+  ADM3_ID        = adm3_boundaries_id$ADM3_ID,
+  med_beta_bino  = med_vals,
+  lower_beta_bino= lower_vals,
+  upper_beta_bino= upper_vals,
+  sd_beta_bino   = sd_vals
+)
+
+plot_plot_adm3_no <- left_join(adm3_boundaries_id, bino, by="ADM3_ID")
+
+plot_plot_adm3_no$med_beta_bino <- 100 * plot_plot_adm3_no$med_beta_bino
+plot_plot_adm3_no$sd_beta_bino  <- 100 * plot_plot_adm3_no$sd_beta_bino
+
+st_write(plot_plot_adm3_no, "result/unit_level_estimate_admin3_no_urban.shp")
+
+ggplot() +
+  geom_sf(data = subset(plot_plot, !is.na(med_beta_bino) & sd_beta_bino != 0), 
+          aes(fill = med_beta_bino), color = "white", lwd = 0.05) +
+  scale_fill_viridis(
+    name = "Measles Coverage (%)",
+    option = "mako",
+    direction = -1,
+    begin = 0.15,
+    end = 0.85,
+    na.value = "transparent",
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, "mm"),
+      barwidth = unit(80, "mm"),
+      title.position = "top",
+      title.hjust = 0.5,
+      frame.colour = "gray30",
+      ticks.colour = "gray30"
+    )
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(data = subset(plot_plot, sd_beta_bino == 0),
+          fill = "#E63946", color = "white", lwd = 0.05) +
+  geom_sf(data = subset(plot_plot, is.na(med_beta_bino)),
+          fill = "#495057", color = "white", lwd = 0.05) +
+  geom_sf(
+    data = adm1_boundaries,
+    fill = NA,
+    color = "black",
+    alpha = 0.7,
+    linewidth = 1.1
+  ) +
+  theme_void() +
+  theme(
+    legend.position    = "bottom",
+    legend.title       = element_text(size = 20, face = "bold", margin = margin(b = 3)),
+    legend.text        = element_text(size = 17),
+    plot.title         = element_text(face = "bold", size = 15, hjust = 0.5),
+    plot.subtitle      = element_text(size = 11, color = "grey30", hjust = 0.5, margin = margin(b = 15)),
+    plot.caption       = element_text(size = 9, color = "#95A5A6", hjust = 0.98, margin = margin(t = 10))
+  )
+
+ggsave("plot_new.png", 
+       width = 16, height = 12, dpi = 400, bg = "white")
+
+# Second administrative-level model without urban/rural
+merged_data_sf_id <- merged_data_sf %>%
+  mutate(ADM2_ID = as.integer(as.factor(ADM2_EN)))
+
+adm2_boundaries_id <- merged_data_sf_id %>%
+  group_by(ADM2_EN, ADM2_ID) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf()
+
+adm2_boundaries_id$ADM2_ID_iid <- adm2_boundaries_id$ADM2_ID
+
+binom_df <- merged_data_sf_id %>%
+  group_by(cluster, ADM2_ID) %>%
+  summarise(
+    y       = sum(value, na.rm=TRUE),
+    N       = sum(!is.na(value)),
+    ADM2_EN = nth(ADM2_EN, 1),
+    ADM2_ID = nth(ADM2_ID, 1),
+    .groups = "drop"
+  ) %>%
+  as.data.frame()
+
+binom_df$ADM2_ID_iid <- binom_df$ADM2_ID
+binom_df$y[binom_df$N == 0] <- NA
+
+nb_adm1 <- poly2nb(binom_sf, row.names = binom_sf$ADM2_ID)
+adj_matrix <- nb2mat(nb_adm1, style="B", zero.policy=TRUE)
+adj_list_adm1 <- inla.read.graph(adj_matrix)
+
+formula <- y ~ -1 + 
+  f(ADM2_ID, model="bym2", graph=adj_list_adm1) + 
+  f(ADM2_ID_iid, model="iid")
+
+result <- inla(
+  formula         = formula,
+  Ntrials         = binom_df$N,
+  data            = binom_df,
+  family          = "betabinomial",
+  control.predictor = list(compute=TRUE),
+  control.compute   = list(
+    return.marginals           = TRUE,
+    config                     = TRUE,
+    return.marginals.predictor = TRUE
+  )
+)
+
+nsamp <- 1000
+samp  <- inla.posterior.sample(n=nsamp, result=result)
+
+region_idx <- which(rownames(samp[[1]]$latent) %>% 
+                      str_detect("ADM2"))[1:length(unique(binom_df$ADM2_ID))]
+
+region_mat <- matrix(0, nrow=length(region_idx), ncol=nsamp)
+
+for(i in seq_len(nsamp)) {
+  region_mat[, i] <- samp[[i]]$latent[region_idx]
+}
+
+linpred_mat <- region_mat
+expit_samp_mat <- 1 / (1 + exp(-linpred_mat))
+
+bino <- data.frame(
+  ADM2_ID         = sort(unique(adm2_boundaries_id$ADM2_ID)),
+  ADM2_EN         = sort(unique(adm2_boundaries_id$ADM2_EN)),
+  med_beta_bino   = apply(expit_samp_mat, 1, median),
+  lower_beta_bino = apply(expit_samp_mat, 1, quantile, 0.025),
+  upper_beta_bino = apply(expit_samp_mat, 1, quantile, 0.975),
+  sd_beta_bino    = apply(expit_samp_mat, 1, sd)
+)
+
+plot_plot_no <- left_join(adm2_boundaries_id, bino, by="ADM2_ID")
+
+plot_plot_no$med_beta_bino <- plot_plot_no$med_beta_bino * 100
+plot_plot_no$sd_beta_bino  <- plot_plot_no$sd_beta_bino  * 100
+
+st_write(plot_plot_no, "result/unit_level_estimate_admin2_no_urban.shp")
+
+ggplot() +
+  geom_sf(data = subset(plot_plot, !is.na(med_beta_bino) & sd_beta_bino != 0), 
+          aes(fill = med_beta_bino), color = "white", lwd = 0.05) +
+  scale_fill_viridis(
+    name = "Measles Coverage (%)",
+    option = "mako", 
+    direction = -1,
+    begin = 0.15,
+    end   = 0.85,
+    na.value = "transparent",
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction="horizontal",
+      barheight=unit(2,"mm"),
+      barwidth=unit(80,"mm"),
+      title.position="top",
+      title.hjust=0.5,
+      frame.colour="gray30",
+      ticks.colour="gray30"
+    )
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(data = subset(plot_plot, sd_beta_bino==0),
+          fill="#E63946", color="white", lwd=0.05) +
+  geom_sf(data = subset(plot_plot, is.na(med_beta_bino)),
+          fill="#495057", color="white", lwd=0.05) +
+  geom_sf(
+    data = adm1_boundaries,
+    fill = NA,
+    color = "black",
+    alpha = 0.7,
+    linewidth = 1.1
+  ) +
+  theme_void() +
+  theme(
+    legend.position="bottom",
+    legend.title=element_text(size=20, face="bold", margin=margin(b=3)),
+    legend.text=element_text(size=17),
+    plot.title=element_text(face="bold", size=20, hjust=0.5, color="#2C3E50", margin=margin(b=8)),
+    plot.subtitle=element_text(size=12, hjust=0.5, color="#7F8C8D", margin=margin(b=15)),
+    plot.caption=element_text(size=9, color="#95A5A6", hjust=0.98, margin=margin(t=10))
+  )
+
+ggsave("measles_coverage_final_admin2_cluster_level_NO_URBAN_RURAL.png", 
+       width=16, height=12, dpi=400, bg="white")
+
+
+```
+
+
+Admin2 accuracy assessment will follow:
+
+first, read all
+
+```{r}
+all_data <- st_read("shapefile_containing_individual_and _cluster_level_data.shp")
+
+est_2_direct <- 
+  st_read("result/direct_estimate_admin2.shp")
+
+est_2_direct$se <- est_2_direct$se * 100
+est_2_direct$value <- est_2_direct$value * 100
+
+est_2_unit_level_urban <- 
+  st_read("result/unit_level_estimate_admin3_urban.shp")
+
+
+est_2_unit_level_no_urban <- 
+  st_read("result/unit_level_estimate_admin2_no_urban.shp")
+direct <- est_2_direct %>% 
+  st_drop_geometry() %>% 
+  select(se) %>% 
+  rename(Direct_SE = se)
+
+urban <- est_2_unit_level_urban %>% 
+  st_drop_geometry() %>% 
+  select(sd_bt_b) %>% 
+  rename(Urban_SE = sd_bt_b)
+
+no_urban <-  est_2_unit_level_no_urban %>%  # Note: Verify path for actual no_urban data
+  st_drop_geometry() %>% 
+  select(sd_bt_b) %>% 
+  rename(NoUrban_SE = sd_bt_b)
+combined <- bind_cols(direct, urban, no_urban) %>% 
+  pivot_longer(cols = c(Urban_SE, NoUrban_SE),
+               names_to = "Method", 
+               values_to = "Unit_SE")
+ggplot(combined, aes(x = Direct_SE, y = Unit_SE, color = Method, shape = Method)) +
+  geom_point(alpha = 0.9, size = 3, shape=21) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey40") +
+  scale_color_manual(values = c("Urban_SE" = "#E69F00", "NoUrban_SE" = "#56B4E9"),
+                     labels = c("Urban Unit-Level", "Non-Urban Unit-Level")) +
+  scale_shape_manual(values = c("Urban_SE" = 17, "NoUrban_SE" = 19),
+                    labels = c("Urban Unit-Level", "Non-Urban Unit-Level")) +
+  labs(title = "",
+       subtitle = "",
+       x = "Direct Estimate Standard Error",
+       y = "Unit-Level Model Standard Deviation",
+       caption = "") +
+  theme_pubclean()  +
+  theme(
+    plot.title = element_text( hjust = 0.5, size = 18),
+    axis.title = element_text(size = 14),
+    panel.grid = element_line(color = "#EAEDED"),
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "white", color = NA),
+    axis.line = element_line(color = "#2C3E50"),
+    plot.caption = element_text(hjust = 0, color = "#7F8C8D")
+  ) +
+  coord_cartesian(ylim = c(0, 22)) +
+  scale_x_continuous(expand = expansion(mult = 0.02)) +
+  scale_y_continuous(expand = expansion(mult = 0.02))
+
+```
+
+
+```{r}
+urban <- est_2_unit_level_urban %>%
+  st_drop_geometry() %>%
+  select(urban_se = sd_bt_b)
+
+no_urban <- est_2_unit_level_no_urban %>%
+  st_drop_geometry() %>%
+  select(nourban_se = sd_bt_b)
+combined <- bind_cols(urban, no_urban)
+ggplot(combined, aes(x = urban_se, y = nourban_se)) +
+  geom_hex(bins = 40, show.legend = FALSE) +
+  geom_point(alpha = 0.4, color = "#2E86C1", size = 3) +
+  geom_smooth(method = "lm", color = "#E74C3C", se = FALSE, 
+              linewidth = 1.2, linetype = "dotdash") +
+  geom_abline(intercept = 0, slope = 1, color = "#27AE60", 
+              linewidth = 1, linetype = "longdash") +
+  stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E") +
+  scale_fill_gradient(low = "#D6EAF8", high = "#2E86C1") +
+  annotate("text", x = 10, y = 15, label = "Reference",
+           color = "#27AE60", size = 4.5, hjust = 1, fontface = "bold") +
+  annotate("text", x = 10, y = 17, label = "Linear trend",
+           color = "#E74C3C", size = 4.5, hjust = 1, fontface = "bold") +
+  coord_equal(xlim = c(0, 23), ylim = c(0, 23)) +
+  labs(title = "",
+       x = "Urban Standard Deviation",
+       y = "Non-Urban Standard Deviation",
+       caption = "") +
+  theme_pubclean() +
+  theme(
+    plot.title = element_text( hjust = 0.5, size = 18),
+    axis.title = element_text(size = 14),
+    panel.grid = element_line(color = "#EAEDED"),
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "white", color = NA),
+    axis.line = element_line(color = "#2C3E50"),
+    plot.caption = element_text(hjust = 0, color = "#7F8C8D")
+  )
+```
+
+```{r}
+ggsave("direct_cluster_level_NO_URBAN_RURAL_SE.png", 
+       width=8, height=5, dpi=400, bg="white")
+```
+
+
+```{r}
+cluster_agg <- merged_data_sf %>%
+  st_drop_geometry() %>%
+  group_by(cluster) %>%
+  summarise(n_sample = sum(!is.na(value)))
+cluster_points <- drc1_sf %>%
+  group_by(cluster) %>%
+  slice(1) %>%
+  ungroup()
+cluster_counts <- left_join(cluster_points, cluster_agg, by = "cluster")
+adm2_boundaries <- data_ethiopia_1 %>%
+  group_by(ADM2_EN) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf()
+adm3_sample_data <- cluster_counts %>%
+  st_join(
+    data_ethiopia_1 %>% select(ADM3_EN),  # Spatial join clusters to ADM3 polygons
+    join = st_within
+  ) %>%
+  st_drop_geometry() %>%
+  group_by(ADM3_EN) %>%
+  summarise(total_samples = sum(n_sample, na.rm = TRUE)) %>%
+  right_join(data_ethiopia_1, by = "ADM3_EN") %>%  # Join back to original polygons
+  st_as_sf()
+
+
+
+adm2_sample_data <- cluster_counts %>%
+  st_join(
+    adm2_boundaries %>% select(ADM2_EN),  
+    join = st_within
+  ) %>%
+  st_drop_geometry() %>%
+  group_by(ADM2_EN) %>%
+  summarise(total_samples = sum(n_sample, na.rm = TRUE)) %>%
+  right_join(adm2_boundaries, by = "ADM2_EN") %>% 
+  st_as_sf()
+
+adm2_sample_data <- adm2_sample_data %>% st_drop_geometry()
+direct <- est_2_direct %>% 
+  st_drop_geometry() %>% 
+  select(se, ADM2_EN) %>% 
+  rename(Direct_SE = se)
+
+urban <- est_2_unit_level_urban %>% 
+  st_drop_geometry() %>% 
+  select(sd_bt_b, ADM2_EN_x) %>% 
+  rename(Urban_SE = sd_bt_b,
+         ADM2_EN = ADM2_EN_x)
+
+no_urban <-  est_2_unit_level_no_urban %>%  # Note: Verify path for actual no_urban data
+  st_drop_geometry() %>% 
+  select(sd_bt_b, ADM2_EN_x) %>% 
+  rename(No_Urban_SE = sd_bt_b,
+         ADM2_EN = ADM2_EN_x)
+
+merged_data_plot <- adm2_sample_data %>%
+  full_join(direct, by = "ADM2_EN") %>%
+  full_join(urban, by = "ADM2_EN") %>%
+  full_join(no_urban, by = "ADM2_EN")
+
+merged_data_plot$abs_de_urb <- abs(merged_data_plot$Direct_SE - merged_data_plot$Urban_SE)
+merged_data_plot$abs_de_no_urb <- abs(merged_data_plot$Direct_SE - merged_data_plot$No_Urban_SE)
+
+
+
+```
+
+
+```{r}
+
+
+merged_data_plot <- merged_data_plot %>% filter(
+  total_samples <= 23
+)
+ggplot(merged_data_plot, aes(x = total_samples)) +
+  geom_point(aes(y = abs_de_urb, color = "Urban Model", size=abs_de_urb), 
+             alpha = 0.8,  shape = 21) +
+  geom_point(aes(y = abs_de_no_urb, color = "Non-Urban Model", size=abs_de_no_urb), 
+             alpha = 0.8, size = 2.5, shape = 21) +
+  geom_line(stat = "smooth",aes(y = abs_de_urb, color = "Urban Model"), 
+              method = "gam", formula = y ~ s(x, bs = "cs"),
+              se = FALSE, linewidth = 1.5, alpha=0.6) +
+  geom_line(stat="smooth", aes(y = abs_de_no_urb, color = "Non-Urban Model"), 
+              method = "gam", formula = y ~ s(x, bs = "cs"),
+              se = FALSE, linewidth = 1.5, linetype = "dashed", alpha=0.6) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "dotted") +
+  geom_text(x = max(merged_data_plot$total_samples, na.rm = TRUE)*0.9, y = 9,
+            label = "Urban Model", color = "#D35400", 
+            hjust = 1, fontface = "bold", size = 4.5) +
+  geom_text(x = max(merged_data_plot$total_samples, na.rm = TRUE)*0.9, y = 8,
+            label = "Non-Urban Model", color = "#2980B9", 
+            hjust = 1, fontface = "bold", size = 4.5) +
+  scale_color_manual(values = c("Urban Model" = "#D35400", 
+                               "Non-Urban Model" = "#2980B9")) +
+  scale_x_continuous(
+    name = "Sample Size",
+    breaks = scales::breaks_extended(8),
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+  scale_y_continuous(
+    name = "Absolute SE Difference (|Direct - Model|)",
+    limits = c(0, 23),
+    breaks = seq(0, 23, 2),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  labs(
+    title = "",
+    subtitle = ""
+  ) +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 12),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 10, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+```
+
+```{r}
+ggsave("shrinkage.png", 
+       width=8, height=5, dpi=400, bg="white")
+```
+
+
+Leave one area out cross validation.. as follows still working at admin2
+
+
+```{r}
+expit <- function(x) {
+  1 / (1 + exp(-x))
+}
+
+# -------------------------------
+# 
+#   - binom_df: unit-level data with columns ADM2_ID, ADM2_EN, y, N, urban, rural
+#   - formula: the INLA formula
+#   - urban_prop: a data frame with urban proportion per area, with columns:
+#         urban_proportion, ADM2_ID, ADM2_EN
+#   - est_2_direct: direct estimates with columns ADM2_EN, value, se
+# -------------------------------
+urban_prop$urban_proportion[is.nan(urban_prop$urban_proportion)] <- 0
+nsamp <- 1000
+unique_ids <- unique(binom_df$ADM2_ID)
+
+# -------------------------------
+# 1) Leave-One-Area Cross Validation using Posterior Sampling
+# -------------------------------
+loo_results <- data.frame()
+for (area in unique_ids) {
+  cat("Processing LOOCV for area:", area, "\n")
+  loo_data <- na.omit(binom_df)
+  loo_data$y[loo_data$ADM2_ID == area] <- NA
+  result_loo <- inla(
+    formula = formula,
+    Ntrials = loo_data$N,
+    data = loo_data,
+    family = "betabinomial",
+    control.predictor = list(compute = TRUE),
+    control.compute = list(return.marginals = TRUE,
+                           config = TRUE,
+                           return.marginals.predictor = TRUE)
+  )
+  samp <- inla.posterior.sample(n = nsamp, result = result_loo)
+  region_idx <- which(str_detect(rownames(samp[[1]]$latent), "ADM2"))[1:length(unique_ids)]
+  urban_idx <- which(str_detect(rownames(samp[[1]]$latent), "urban"))
+  rural_idx <- which(str_detect(rownames(samp[[1]]$latent), "rural"))
+  region_mat <- matrix(0, nrow = length(region_idx), ncol = nsamp)
+  urban_mat  <- matrix(0, nrow = 1, ncol = nsamp)
+  rural_mat  <- matrix(0, nrow = 1, ncol = nsamp)
+  for(i in 1:nsamp) {
+    region_mat[, i] <- samp[[i]]$latent[region_idx]
+    urban_mat[, i]  <- samp[[i]]$latent[urban_idx]
+    rural_mat[, i]  <- samp[[i]]$latent[rural_idx]
+  }
+  samp_mat_urban <- region_mat + matrix(rep(urban_mat, each = nrow(region_mat)), nrow = nrow(region_mat))
+  samp_mat_rural <- region_mat + matrix(rep(rural_mat, each = nrow(region_mat)), nrow = nrow(region_mat))
+  expit_samp_mat_urban <- expit(samp_mat_urban)
+  expit_samp_mat_rural <- expit(samp_mat_rural)
+  u_prop <- urban_prop$urban_proportion[urban_prop$ADM2_ID == area]
+  if(length(u_prop) > 1) { u_prop <- u_prop[1] }
+  expit_samp_mat <- (u_prop * expit_samp_mat_urban + (1 - u_prop) * expit_samp_mat_rural)
+
+  pos <- which(unique_ids == area)
+  pred_samples <- expit_samp_mat[pos, ]
+  med   <- median(pred_samples)
+  lower <- as.numeric(quantile(pred_samples, 0.025))
+  upper <- as.numeric(quantile(pred_samples, 0.975))
+  sd_val <- sd(pred_samples)
+  adm2_en <- loo_data$ADM2_EN[match(area, loo_data$ADM2_ID)]
+  loo_results <- rbind(loo_results, data.frame(
+    ADM2_ID    = area,
+    ADM2_EN    = adm2_en,
+    pred_mean  = med,
+    pred_lower = lower,
+    pred_upper = upper,
+    sd_beta_bino = sd_val
+  ))
+}
+
+# -------------------------------
+# 2) Prepare Direct Estimates for Comparison
+# -------------------------------
+est_2_direct_good <- design_based_estimates_admin2 %>%
+  filter(!is.na(value), se > 0.005)
+
+# -------------------------------
+# 3) Merge LOOCV Predictions with Direct Estimates
+# -------------------------------
+cv_df <- left_join(est_2_direct_good, loo_results, by = "ADM2_EN")
+cv_df$pred_mean <- cv_df$pred_mean * 100
+# -------------------------------
+# 4) Plot Direct vs. LOOCV Predictions
+# -------------------------------
+
+p <- ggplot(cv_df, aes(x = value*100, y = pred_mean*100)) +
+
+    geom_point(aes(size = se), color="#D35400", shape=21, alpha = 0.85, show.legend = TRUE) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#3a86ff", linewidth = 1) +
+  scale_color_viridis(
+    option = "plasma", direction = -1, name = "Prediction SE"
+  ) +
+  # scale_size_continuous(name = "Prediction SE", range = c(2, 8)) +
+  labs(
+    x = "Direct Estimate",
+    y = "LOOCV Model Prediction",
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+ stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E") +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 40),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 34, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+print(p)
+
+
+rmse <- sqrt(mean((cv_df$value - cv_df$pred_mean)^2, na.rm = TRUE))
+print(rmse)
+rmse
+write.csv(cv_df, "result/loocv_admin2.csv")
+```
+
+rmse for urban was 20.6.. and for when not using urban 27.9
+
+```{r}
+ggsave("cross_validated.png", 
+       width=6, height=4, dpi=400, bg="white")
+```
+
+
+```{r}
+direct <- est_2_direct %>% 
+  st_drop_geometry() %>% 
+  select(value, se, ADM2_EN) %>% 
+  rename(Direct_value = value)
+
+urban <- est_2_unit_level_urban %>% 
+  st_drop_geometry() %>% 
+  select(md_bt_b, ADM2_EN_x) %>% 
+  rename(Urban_MD = md_bt_b)
+
+bb <- left_join(direct, urban, by=c("ADM2_EN" = "ADM2_EN_x"))
+
+
+p <- ggplot(ccc, aes(x = value.x*100, y = med_beta_bino)) +
+
+    geom_point(aes(size=sd_beta_bino),color="#D35400", shape=21, alpha = 0.85, show.legend = TRUE) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#3a86ff", linewidth = 1) +
+  scale_color_viridis(
+    option = "plasma", direction = -1, name = "Prediction SE"
+  ) +
+  # scale_size_continuous(name = "Prediction SE", range = c(2, 8)) +
+  labs(
+    x = "Direct Estimate",
+    y = "Model Based (Using Urban)",
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E", size=14) +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 15),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 15, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+print(p)
+```
+
+
+```{r}
+ggsave("no_cross_validated_coapring_dire_model_based_mean_admin3.png", 
+       width=6, height=4, dpi=400, bg="white")
+```
+
+
+```{r}
+direct <- est_2_direct %>% 
+  st_drop_geometry() %>% 
+  select(value, se, ADM3_EN) %>% 
+  rename(Direct_value = value)
+
+urban <- est_2_unit_level_urban %>% 
+  st_drop_geometry() %>% 
+  select(md_bt_b, ADM3_EN_x) %>% 
+  rename(Urban_MD = md_bt_b)
+
+bb <- left_join(direct, urban, by=c("ADM3_EN" = "ADM3_EN_x"))
+
+
+p <- ggplot(bb, aes(x = Direct_value, y = Urban_MD)) +
+
+    geom_point(aes(size=se),color="#D35400", shape=21, alpha = 0.85, show.legend = TRUE) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#3a86ff", linewidth = 1) +
+  scale_color_viridis(
+    option = "plasma", direction = -1, name = "Prediction SE"
+  ) +
+  # scale_size_continuous(name = "Prediction SE", range = c(2, 8)) +
+  labs(
+    x = "Direct Estimate",
+    y = "Model Based (Using Urban)",
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E", size=4) +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 17),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 14, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+print(p)
+```
+
+```{r}
+ggsave("no_cross_validated_coapring_dire_model_based_mean_admin3.png", 
+       width=6, height=4, dpi=400, bg="white")
+```
+
+
+For writing description in the poster!
+
+```{r}
+urba_2 <- st_read("result/unit_level_estimate_admin3_urban.shp")
+
+no_urba_2 <- st_read("result/unit_level_estimate_admin3_no_urban.shp")
+names(no_urba_2)
+
+```
+
+
+# more analysis
+
+admin2 (these variables came from the above codes)
+
+```{r}
+adm2_sample_data_no_shape <- st_drop_geometry(adm2_sample_data)
+
+merge1 <- left_join(adm2_sample_data_no_shape, design_based_estimates_admin2, by=c("ADM2_EN"))
+
+merge2 <- left_join(merge1, adm2_summary, by=c("ADM2_EN"))
+
+plot2 <- ggplot(na.omit(merge2), aes(x = total_samples, y = se, color = homogeneous)) +
+  geom_point(size = 3) +
+  geom_text_repel(
+    aes(label = total_samples),
+    size = 3,
+    show.legend = FALSE,
+    max.overlaps = 20
+  ) +
+  scale_color_brewer(
+    palette = "Dark2",
+    labels = c("FALSE" = "Heterogeneous", "TRUE" = "Homogeneous")
+  ) +
+  labs(
+    x     = expression(paste("Total Samples per ", 2^{nd}, " administrative Unit")),
+    y     = "Design-based Standard Error",
+    color = "Response Homogeneity"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+
+
+
+```
+
+```{r}
+design_based_estimates_admin3 <- design_based_estimates
+adm3_sample_data_no_shape <- st_drop_geometry(adm3_sample_data)
+
+merge1 <- left_join(adm3_sample_data_no_shape, design_based_estimates_admin3, by=c("ADM3_EN"))
+
+merge3 <- left_join(merge1, adm3_summary, by=c("ADM3_EN"))
+plot1 <- ggplot(merge3, aes(x = total_samples, y = se, color = homogeneous)) +
+  geom_point(size = 3) +
+  geom_text_repel(
+    aes(label = total_samples),
+    size = 3,
+    show.legend = FALSE,
+    max.overlaps = 20
+  ) +
+  scale_color_brewer(
+    palette = "Dark2",
+    labels = c("FALSE" = "Heterogeneous", "TRUE" = "Homogeneous")
+  ) +
+  labs(
+    x     = expression(paste("Total Samples per ", 3^{rd}, " administrative Unit")),
+    y     = "Design-based Standard Error",
+    color = "Response Homogeneity"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+```
+
+
+```{r}
+final_plot <- plot1 + plot2 +
+  plot_layout(ncol = 2) 
+print(final_plot)
+
+ggsave("SSvsSE.png", 
+       width = 13, height = 7.4, dpi = 400, bg = "white")
+```
+
+
+
+
+```{r}
+merge2 <- merge2 %>% filter(
+  !is.na(homogeneous)
+)
+merge3 <- merge3 %>% filter(
+  !is.na(homogeneous)
+)
+plot1 <- ggplot(merge2, aes(x = total_samples, y = se)) +
+  geom_hex(bins = 30) +
+  scale_fill_distiller(
+    palette = "Spectral",
+    direction = 1,
+    name = "Count"
+  ) +
+  facet_wrap(~ homogeneous,
+             labeller = as_labeller(c(
+               "TRUE"  = "Homogeneous",
+               "FALSE" = "Heterogeneous"
+             ))) +
+  labs(
+    x     = expression(paste("Total Samples per ", 2^{nd}, " administrative Unit")),
+    y     = "Design-based Standard Error",
+    title = ""
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    
+    text = element_text(family = "Arial Narrow", color = "#2a2a2a"),
+        plot.title = element_markdown(hjust = 0.5, lineheight = 1.2, 
+                                      margin = margin(t = 10, b = 10)),
+        plot.subtitle = element_markdown(hjust = 0.5, size = 16,
+                                         color = "gray30", margin = margin(b = 20)),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.position = "bottom",
+        legend.text = element_text(size = 13),
+        axis.text.x = element_text(angle = 90, hjust = 1, color = "gray40"),
+        axis.text.y = element_text(color = "gray40"),
+        # panel.grid.major.x = element_blank(),
+        # panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        strip.background = element_rect(fill = "#F7F7F7", color = NA),
+        strip.text = element_text(face="bold", size = 17, color = "#2A5783"),
+        plot.caption = element_markdown(hjust = 0.5, color = "gray50", 
+                                        margin = margin(t = 15)),
+        plot.background = element_rect(fill = "white", color = NA)
+  ) 
+
+
+plot2 <- ggplot(merge3, aes(x = total_samples, y = se)) +
+  geom_hex(bins = 30) +
+  scale_fill_distiller(
+    palette = "Spectral",
+    direction = 1,
+    name = "Count"
+  ) +
+  facet_wrap(~ homogeneous,
+             labeller = as_labeller(c(
+               "TRUE"  = "Homogeneous",
+               "FALSE" = "Heterogeneous"
+             ))) +
+  labs(
+    x     = expression(paste("Total Samples per ", 3^{rd}, " administrative Unit")),
+    y     = "Design-based Standard Error",
+    title = ""
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    
+    text = element_text(family = "Arial Narrow", color = "#2a2a2a"),
+        plot.title = element_markdown(hjust = 0.5, lineheight = 1.2, 
+                                      margin = margin(t = 10, b = 10)),
+        plot.subtitle = element_markdown(hjust = 0.5, size = 16,
+                                         color = "gray30", margin = margin(b = 20)),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.position = "bottom",
+        legend.text = element_text(size = 13),
+        axis.text.x = element_text(angle = 90, hjust = 1, color = "gray40"),
+        axis.text.y = element_text(color = "gray40"),
+        # panel.grid.major.x = element_blank(),
+        # panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        strip.background = element_rect(fill = "#F7F7F7", color = NA),
+        strip.text = element_text(face="bold", size = 17, color = "#2A5783"),
+        plot.caption = element_markdown(hjust = 0.5, color = "gray50", 
+                                        margin = margin(t = 15)),
+        plot.background = element_rect(fill = "white", color = NA)
+  ) 
+
+final_plot <- plot1 + plot2 + plot_layout(ncol = 2)
+print(final_plot)
+```
+
+
+
+```{r}
+design_based_estimates_admin1
+
+data_ethiopia_1_filter <- data.frame(
+  ADM1_EN = data_ethiopia_1$ADM1_EN,
+  ADM2_EN = data_ethiopia_1$ADM2_EN,
+  ADM3_EN = data_ethiopia_1$ADM3_EN
+)
+
+hhh <- merge(data_ethiopia_1_filter, design_based_estimates_admin2, by=c("ADM2_EN"))
+
+
+hhhhh <- merge(hhh, design_based_estimates_admin1, by=c("ADM1_EN"))
+
+
+```
+
+
+
+```{r}
+
+df_sd <- tibble(
+  area           = seq_along(plot_plot_no$sd_beta_bino),
+  `Without urban` = plot_plot_no$sd_beta_bino,
+  `With urban`    = plot_plot$sd_beta_bino
+) %>%
+  pivot_longer(-area, names_to = "Model", values_to = "SD")
+mean_df <- df_sd %>%
+  group_by(Model) %>%
+  summarize(mean_SD = mean(SD), .groups = "drop")
+cbPalette <- c("Without urban" = "#0072B2", "With urban" = "#D55E00")
+
+ggplot(df_sd, aes(x = area, y = SD, color = Model)) +
+  geom_point(size = 3, shape=21, alpha=0.4) +
+  geom_hline(
+    data = mean_df,
+    aes(yintercept = mean_SD, color = Model),
+    linetype = "dashed",
+    size = 0.8
+  ) +
+  scale_color_manual(values = cbPalette) +
+  scale_shape_manual(values = c(16, 17)) +
+  labs(
+    x     = expression(paste("Total Samples per ", 2^{rd}, " administrative Unit")),
+    y     = "Standard errors",
+    # title = "Comparison of Posterior standard errors with and without urban covariate",
+    subtitle = "",
+    color = NULL, shape = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position    = "top",
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+```{r}
+ggsave("plot_new_admin2.png", 
+       width = 12, height = 7, dpi = 400, bg = "white")
+```
+
+
+
+
+MBG and my estimte
+
+```{r}
+est_2_unit_level_urban <- 
+  st_read("result/unit_level_estimate_admin2_urban.shp")
+
+est_3_unit_level_urban_mbg <- 
+  read_csv("result/agg_summaries_all.csv")
+
+est_3_unit_level_urban_mbg <- est_3_unit_level_urban_mbg %>% filter(
+  vaccine == "mcv1" & year == 2019
+)
+
+names(est_3_unit_level_urban)
+
+merge_both <- left_join(est_3_unit_level_urban, est_3_unit_level_urban_mbg, by=c("ADM3_EN_x"="ADM3_EN"))
+
+plot(merge_both$mean, merge_both$md_bt_b)
+merge_both$se_one <- merge_both$uppr_b_ - merge_both$lwr_bt_
+
+p <- ggplot(merge_both, aes(x = md_bt_b, y = mean*100)) +
+
+    geom_point(aes(size=se_one),color="#D35400", shape=21, alpha = 0.85, show.legend = TRUE) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#3a86ff", linewidth = 1) +
+  scale_color_viridis(
+    option = "plasma", direction = -1, name = "Prediction SE"
+  ) +
+  # scale_size_continuous(name = "Prediction SE", range = c(2, 8)) +
+  labs(
+    x = "Model-based small area estimation \n (with urban variable)",
+    y = "Model Based Geostatistics \n (MBG)",
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E", size=13) +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 17),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 14, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+
+print(p)
+
+```
+
+```{r}
+ggsave("final_mbg_sae_admin2_se.png",
+       width = 8, height = 5, dpi = 400, bg = "white")
+```
+
+
+```{r}
+z <- qnorm(0.975)  # 1.96
+se1 <- (merge_both$uppr_b_   - merge_both$lwr_bt_) / (2 * z)
+se2 <- (merge_both$upper     - merge_both$lower  ) / (2 * z)
+merge_both$se1 <- se1
+merge_both$se2 <- se2
+p <- ggplot(merge_both, aes(x = se1*100, y = se2*100)) +
+
+    geom_point(color="#D35400", shape=21, alpha = 0.85, show.legend = TRUE) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#3a86ff", 
+              linewidth = 1) +
+  scale_color_viridis(
+    option = "plasma", direction = -1, name = "Prediction SE"
+  ) +
+  # scale_size_continuous(name = "Prediction SE", range = c(2, 8)) +
+  labs(
+    x = "Standard Error \n Model-based small area estimation \n (with urban variable)",
+    y = "Standard Error \n Model Based Geostatistics \n (MBG)",
+    title = "",
+    subtitle = "",
+    caption = ""
+  ) +
+  stat_cor(method = "pearson", label.x.npc = 0.05, label.y.npc = 0.95,
+           aes(label = ..r.label..), color = "#34495E", size=13) +
+  theme_pubclean()+
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey30",
+                                margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 17),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text = element_text(size = 14, color = "grey40"),
+    axis.ticks = element_line(color = "grey60", linewidth = 0.6),
+    panel.background = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  ) +
+  annotate("segment", x = -Inf, xend = Inf, y = -Inf, yend = -Inf,
+           color = "grey40", linewidth = 0.8) +
+  annotate("segment", y = -Inf, yend = Inf, x = -Inf, xend = -Inf,
+           color = "grey40", linewidth = 0.8)
+
+print(p)
+```
+
+
+
+```{r}
+
+
+#estimate normal distribution parameters from mean and confidence interval
+estimate_normal_params <- function(mean_val, lower_ci, upper_ci, confidence_level = 0.95) {
+  ci_width <- upper_ci - lower_ci
+  z_score <- qnorm(1 - (1 - confidence_level)/2)  # 1.96 for 95% CI
+  standard_error <- ci_width / (2 * z_score)
+  
+  return(list(mean = mean_val, sd = standard_error))
+}
+
+calc_exceed_prob <- function(mean_val, lower_ci, upper_ci, threshold = 0.9) {
+  if (is.na(mean_val) | is.na(lower_ci) | is.na(upper_ci)) {
+    return(NA)
+  }
+  if (lower_ci >= threshold) {
+    return(0.999)
+  }
+  if (upper_ci <= threshold) {
+    return(0.001)
+  }
+  params <- estimate_normal_params(mean_val, lower_ci, upper_ci)
+  prob <- 1 - pnorm(threshold, mean = params$mean, sd = params$sd)
+  prob <- pmax(0, pmin(1, prob))
+  return(prob)
+}
+analyze_mcv1_coverage <- function(data, threshold = 0.9) {
+  
+  results <- data %>%
+    mutate(
+      prob_exceed = map_dbl(1:n(), ~calc_exceed_prob(
+        estimate[.x], 
+        lwr_bt_[.x], 
+        uppr_b_[.x], 
+        threshold
+      )),
+      #classify based on probability
+      classification = case_when(
+        prob_exceed >= 0.8 ~ "Very Likely (≥80%)",
+        prob_exceed >= 0.5 ~ "Likely (50-80%)",
+        prob_exceed >= 0.2 ~ "Possible (20-50%)",
+        prob_exceed > 0 ~ "Unlikely (<20%)",
+        TRUE ~ "Very Unlikely (0%)"
+      )
+    )
+  
+  return(results)
+}
+summarize_results <- function(results, threshold = 0.9) {
+  summary_stats <- list(
+    n_total = nrow(results),
+    n_above_threshold = sum(results$prob_exceed > 0.5, na.rm = TRUE),
+    mean_probability = mean(results$prob_exceed, na.rm = TRUE),
+    median_probability = median(results$prob_exceed, na.rm = TRUE),
+    overall_likelihood = mean(results$prob_exceed, na.rm = TRUE),
+    high_confidence_count = sum(results$prob_exceed >= 0.8, na.rm = TRUE),
+    classification_summary = table(results$classification)
+  )
+  
+  return(summary_stats)
+}
+plot_probability_distribution <- function(results, threshold = 0.9) {
+  p1 <- ggplot(results, aes(x = prob_exceed)) +
+    geom_histogram(bins = 20, fill = "lightblue", color = "black", alpha = 0.7) +
+    geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", size = 1) +
+    labs(
+      title = paste("Distribution of Probabilities of Exceeding", threshold),
+      subtitle = "Based on Normal Distribution Model",
+      x = "Probability of Exceeding Threshold",
+      y = "Count",
+      caption = "Red line indicates 50% probability"
+    ) +
+    theme_minimal()
+  p2 <- ggplot(results, aes(x = reorder(ADM3_EN_y, estimate))) +
+    geom_point(aes(y = estimate, color = prob_exceed), size = 2) +
+    geom_errorbar(aes(ymin = lwr_bt_, ymax = uppr_b_, color = prob_exceed), 
+                  width = 0.2, alpha = 0.7) +
+    geom_hline(yintercept = threshold, linetype = "dashed", color = "red", size = 1) +
+    scale_color_gradient2(
+      low = "red", mid = "yellow", high = "green", midpoint = 0.5,
+      name = "Prob. of\nExceeding\nThreshold"
+    ) +
+    labs(
+      title = paste("MCV1 Coverage Estimates with Uncertainty (Normal Model)"),
+      subtitle = paste("Threshold =", threshold),
+      x = "Area",
+      y = "Coverage Estimate"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  return(list(prob_hist = p1, coverage_plot = p2))
+}
+run_mcv1_analysis <- function(data, threshold = 0.9) {
+  data <- data %>%
+    rename(estimate = md_bt_b) %>%
+    select(ADM3_EN_y, estimate, lwr_bt_, uppr_b_)
+  results <- analyze_mcv1_coverage(data, threshold)
+  summary_stats <- summarize_results(results, threshold)
+  plots <- plot_probability_distribution(results, threshold)
+  cat("=== MCV1 Coverage Analysis Summary ===\n")
+  cat("Threshold:", threshold, "\n")
+  cat("Total areas analyzed:", summary_stats$n_total, "\n")
+  cat("Areas likely to exceed threshold (>50% prob):", summary_stats$n_above_threshold, "\n")
+  cat("Overall average probability:", round(summary_stats$overall_likelihood, 3), "\n")
+  cat("Median probability:", round(summary_stats$median_probability, 3), "\n")
+  cat("High confidence areas (≥80% prob):", summary_stats$high_confidence_count, "\n\n")
+  
+  cat("Classification breakdown:\n")
+  print(summary_stats$classification_summary)
+  print(plots$prob_hist)
+  print(plots$coverage_plot)
+  
+  return(list(
+    results = results,
+    summary = summary_stats,
+    plots = plots
+  ))
+}
+analysis_results <- run_mcv1_analysis(est_2_unit_level_urban , threshold = 0.9)
+
+#maybe not used
+ggsave("new_90.png", width = 14, height = 10, bg = "white")
+
+```
+
+
+
+```{r}
+# Bottom 20% Classification Confidence Analysis
+# How confident are we in identifying the true bottom 20% given uncertainty?
+# Bottom 20% Classification Probability Analysis
+# For each district: probability of being labeled as bottom 20% given uncertainty
+simulate_bottom20_probabilities <- function(data, n_simulations = 10000) {
+  data <- data %>%
+    rename(estimate = md_bt_b) %>%
+    select(ADM3_EN_y, estimate, lwr_bt_, uppr_b_) %>%
+    filter(!is.na(estimate) & !is.na(lwr_bt_) & !is.na(uppr_b_)) %>%
+    mutate(district_id = row_number())
+  
+  n_districts <- nrow(data)
+  bottom20_count <- ceiling(n_districts * 0.2)
+  
+  cat("Analyzing", n_districts, "districts\n")
+  cat("Bottom 20% =", bottom20_count, "districts\n")
+  cat("Running", n_simulations, "simulations...\n\n")
+  bottom20_matrix <- matrix(FALSE, nrow = n_simulations, ncol = n_districts)
+  
+  #simulations
+  for (sim in 1:n_simulations) {
+    simulated_values <- runif(n_districts, 
+                             min = data$lwr_bt_, 
+                             max = data$uppr_b_)
+    ranks <- rank(simulated_values, ties.method = "random")
+    bottom20_districts <- ranks <= bottom20_count
+    bottom20_matrix[sim, ] <- bottom20_districts
+  }
+  district_probabilities <- colMeans(bottom20_matrix)
+  results <- data %>%
+    mutate(
+      prob_labeled_bottom20 = district_probabilities,
+      point_estimate_rank = rank(estimate),
+      point_estimate_bottom20 = point_estimate_rank <= bottom20_count
+    ) %>%
+    arrange(desc(prob_labeled_bottom20))
+  
+  return(list(
+    results = results,
+    n_districts = n_districts,
+    bottom20_count = bottom20_count,
+    simulation_matrix = bottom20_matrix
+  ))
+}
+
+# categorize districts by probability
+categorize_districts <- function(results_data) {
+  
+  results_data %>%
+    mutate(
+      probability_category = case_when(
+        prob_labeled_bottom20 >= 0.8 ~ "Very High (≥80%)",
+        prob_labeled_bottom20 >= 0.6 ~ "High (60-80%)",
+        prob_labeled_bottom20 >= 0.4 ~ "Moderate (40-60%)",
+        prob_labeled_bottom20 >= 0.2 ~ "Low (20-40%)",
+        prob_labeled_bottom20 >= 0.05 ~ "Very Low (5-20%)",
+        TRUE ~ "Minimal (<5%)"
+      ),
+      
+      classification_status = case_when(
+        point_estimate_bottom20 & prob_labeled_bottom20 >= 0.6 ~ "Stable Bottom 20%",
+        point_estimate_bottom20 & prob_labeled_bottom20 < 0.6 ~ "Uncertain Bottom 20%",
+        !point_estimate_bottom20 & prob_labeled_bottom20 >= 0.4 ~ "Potential Bottom 20%",
+        TRUE ~ "Unlikely Bottom 20%"
+      )
+    )
+}
+create_probability_visualizations <- function(categorized_data, bottom20_count) {
+  p1 <- ggplot(categorized_data, aes(x = prob_labeled_bottom20)) +
+    geom_histogram(bins = 50, fill = "lightblue", color = "black", alpha = 0.7) +
+    geom_vline(xintercept = 0.2, color = "red", linetype = "dashed", size = 1) +
+    geom_vline(xintercept = 0.8, color = "orange", linetype = "dashed", size = 1) +
+    labs(
+      title = "Distribution of Bottom 20% Classification Probabilities",
+      subtitle = "Each district's probability of being labeled as bottom 20%",
+      x = "Probability of Being Labeled Bottom 20%",
+      y = "Number of Districts",
+      caption = "Red line = 20%, Orange line = 80%"
+    ) +
+    theme_minimal()
+  
+  #ordered by probability
+  p2 <- ggplot(categorized_data, aes(x = reorder(ADM3_EN_y, prob_labeled_bottom20), 
+                                     y = prob_labeled_bottom20)) +
+    geom_col(aes(fill = probability_category), alpha = 0.8) +
+    geom_hline(yintercept = c(0.2, 0.4, 0.6, 0.8), linetype = "dashed", alpha = 0.5) +
+    scale_fill_manual(values = c(
+      "Very High (≥80%)" = "darkred",
+      "High (60-80%)" = "red",
+      "Moderate (40-60%)" = "orange",
+      "Low (20-40%)" = "yellow",
+      "Very Low (5-20%)" = "lightblue",
+      "Minimal (<5%)" = "lightgray"
+    )) +
+    labs(
+      title = "Individual District Classification Probabilities",
+      x = "District (ordered by probability)",
+      y = "Probability of Being Labeled Bottom 20%",
+      fill = "Probability Category"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+  
+  #point estimate vs simulation probability
+  p3 <- ggplot(categorized_data, aes(x = estimate, y = prob_labeled_bottom20)) +
+    geom_point(aes(color = classification_status), size = 2, alpha = 0.7) +
+    geom_hline(yintercept = 0.2, linetype = "dashed", alpha = 0.5) +
+    geom_vline(xintercept = quantile(categorized_data$estimate, 0.2), 
+               linetype = "dashed", alpha = 0.5) +
+    scale_color_manual(values = c(
+      "Stable Bottom 20%" = "darkgreen",
+      "Uncertain Bottom 20%" = "orange", 
+      "Potential Bottom 20%" = "blue",
+      "Unlikely Bottom 20%" = "gray"
+    )) +
+    labs(
+      title = "Point Estimate vs Classification Probability",
+      x = "Point Estimate (Coverage)",
+      y = "Probability of Being Labeled Bottom 20%",
+      color = "Classification Status"
+    ) +
+    theme_minimal()
+  
+  return(list(prob_hist = p1, district_bars = p2, scatter_plot = p3))
+}
+
+# analysis function
+analyze_bottom20_classification_probability <- function(data, n_simulations = 10000) {
+  
+  cat("=== BOTTOM 20% CLASSIFICATION PROBABILITY ANALYSIS ===\n\n")
+  
+  #  simulation
+  sim_results <- simulate_bottom20_probabilities(data, n_simulations)
+  categorized_data <- categorize_districts(sim_results$results)
+  cat("SIMULATION SUMMARY:\n")
+  cat("Total districts:", sim_results$n_districts, "\n")
+  cat("Bottom 20% size:", sim_results$bottom20_count, "districts\n\n")
+  
+  # category breakdown
+  cat("PROBABILITY CATEGORY BREAKDOWN:\n")
+  category_summary <- table(categorized_data$probability_category)
+  print(category_summary)
+  cat("\n")
+  cat("CLASSIFICATION STATUS BREAKDOWN:\n")
+  status_summary <- table(categorized_data$classification_status)
+  print(status_summary)
+  cat("\n")
+  cat("KEY STATISTICS:\n")
+  cat("Mean probability across all districts:", 
+      round(mean(categorized_data$prob_labeled_bottom20), 3), "\n")
+  cat("Districts with >80% probability:", 
+      sum(categorized_data$prob_labeled_bottom20 >= 0.8), "\n")
+  cat("Districts with >60% probability:", 
+      sum(categorized_data$prob_labeled_bottom20 >= 0.6), "\n")
+  cat("Districts with 20-80% probability (uncertain):", 
+      sum(categorized_data$prob_labeled_bottom20 >= 0.2 & 
+          categorized_data$prob_labeled_bottom20 < 0.8), "\n\n")
+  cat("TOP 10 DISTRICTS BY CLASSIFICATION PROBABILITY:\n")
+  top_districts <- head(categorized_data %>% 
+                       select(ADM3_EN_y, estimate, prob_labeled_bottom20, 
+                              probability_category, classification_status), 10)
+  print(top_districts)
+  cat("\n")
+  
+  #point-estimate bottom 20% with low simulation probability
+  uncertain_bottom20 <- categorized_data %>%
+    filter(point_estimate_bottom20 & prob_labeled_bottom20 < 0.6) %>%
+    arrange(prob_labeled_bottom20) %>%
+    select(ADM3_EN_y, estimate, prob_labeled_bottom20, classification_status)
+  
+  if(nrow(uncertain_bottom20) > 0) {
+    cat("POINT-ESTIMATE BOTTOM 20% WITH LOW SIMULATION PROBABILITY:\n")
+    print(uncertain_bottom20)
+    cat("\n")
+  }
+  
+  # non-point-estimate districts with high simulation probability
+  potential_bottom20 <- categorized_data %>%
+    filter(!point_estimate_bottom20 & prob_labeled_bottom20 >= 0.4) %>%
+    arrange(desc(prob_labeled_bottom20)) %>%
+    select(ADM3_EN_y, estimate, prob_labeled_bottom20, classification_status)
+  
+  if(nrow(potential_bottom20) > 0) {
+    cat("NON-POINT-ESTIMATE DISTRICTS WITH HIGH SIMULATION PROBABILITY:\n")
+    print(potential_bottom20)
+    cat("\n")
+  }
+  plots <- create_probability_visualizations(categorized_data, sim_results$bottom20_count)
+  print(plots$prob_hist)
+  print(plots$district_bars)
+  print(plots$scatter_plot)
+  stable_count <- sum(categorized_data$classification_status == "Stable Bottom 20%")
+  uncertain_count <- sum(categorized_data$classification_status == "Uncertain Bottom 20%")
+  
+  cat("=== INTERPRETATION SUMMARY ===\n")
+  cat("Out of", sim_results$bottom20_count, "districts in point-estimate bottom 20%:\n")
+  cat("- Stable (≥60% simulation probability):", stable_count, "\n")
+  cat("- Uncertain (<60% simulation probability):", uncertain_count, "\n")
+  cat("Classification certainty:", round(stable_count/sim_results$bottom20_count*100, 1), "%\n")
+  
+  return(list(
+    simulation_results = sim_results,
+    categorized_data = categorized_data,
+    plots = plots,
+    summary_stats = list(
+      stable_districts = stable_count,
+      uncertain_districts = uncertain_count,
+      classification_certainty = stable_count/sim_results$bottom20_count
+    )
+  ))
+}
+
+# Run:
+results <- analyze_bottom20_classification_probability(est_2_unit_level_urban, n_simulations = 10000)
+```
+
+```{r}
+
+est_3_unit_level_urban <- 
+  st_read("result/unit_level_estimate_admin2_urban_new_new.shp")
+
+## ---------------------------------------------------------------
+##  1.  Add P(coverage > 0.90) for every ADM‑2
+## ---------------------------------------------------------------
+
+# est_3_unit_level_urban <- st_drop_geometry(est_3_unit_level_urban)
+est_3_unit_level_urban$md_bt_b <- est_3_unit_level_urban$md_bt_b/100
+est_3_unit_level_urban$sd_bt_b <- est_3_unit_level_urban$sd_bt_b/100
+
+df_prob <- est_3_unit_level_urban %>% 
+  rowwise() %>%                             # one row at a time
+  mutate(
+    p_gt90 = 1 - ptnorm(
+      0.9,
+      mean  = md_bt_b,
+      sd    = sd_bt_b
+      # lower = 0, upper = 1                 # truncate to [0,1]
+    )
+  ) %>% 
+  ungroup()
+
+
+## ---------------------------------------------------------------
+##  2.  Overall summaries 
+## ---------------------------------------------------------------
+overall_equal_weight  <- mean(df_prob$p_gt90, na.rm = TRUE)
+
+share_high_confidence <- mean(df_prob$p_gt90 >= 0.80, na.rm = TRUE)   
+prob_all_hit_target   <- prod(df_prob$p_gt90,   na.rm = TRUE)         
+
+```
+
+
+
+```{r}
+df   <- est_3_unit_level_urban %>%
+    mutate(
+        sd_use = ifelse(!is.na(sd_bt_b), sd_bt_b,
+                        (upprb - lwrbt) / (2 * qnorm(.975)))
+    )
+df <- df %>%
+    mutate(
+        n_eff = pmax((md_bt_b * (1 - md_bt_b)) / sd_use^2 - 1, 0.01)
+    )
+df <- df %>%
+    mutate(
+        alpha = 1 + md_bt_b * n_eff,
+        beta  = 1 + (1 - md_bt_b) * n_eff
+    )
+df_prob_beta <- df %>%
+    mutate(
+        p_gt90 = 1 - pbeta(0.90, alpha, beta)
+    )
+overall_equal_weight  <- mean(df_prob_beta$p_gt90, na.rm = TRUE)
+share_high_confidence <- mean(df_prob_beta$p_gt90 >= 0.80, na.rm = TRUE)
+prob_all_hit_target   <- prod(df_prob_beta$p_gt90,   na.rm = TRUE)  # independence
+
+cat("\n--- Posterior exceedance results -----------------------------------\n",
+    sprintf("Mean   P(coverage > 90 %%):  %.3f", overall_equal_weight), "\n",
+    sprintf("Share  with ≥80 %% chance  :  %.1f %%", 100*share_high_confidence), "\n",
+    sprintf("Prob. all units > 90 %%    :  %.4f", prob_all_hit_target), "\n")
+```
+
+
+```{r}
+ ggsave("map1_new_final.png", width = 16, height = 12, bg = "white")
+```
+
+
+```{r}
+
+df <- est_3_unit_level_urban %>%
+  mutate(
+    sd_use = ifelse(!is.na(sd_bt_b),
+                    sd_bt_b,
+                    (upprb - lwrbt) / (2 * qnorm(.975)))
+  )
+df <- df %>%
+  mutate(
+    n_eff = pmax((md_bt_b * (1 - md_bt_b)) / sd_use^2 - 1, 0.01),
+    alpha = 1 + md_bt_b * n_eff,
+    beta  = 1 + (1 - md_bt_b) * n_eff
+  )
+set.seed(2025)
+B  <- 2000
+n  <- nrow(df)
+
+draw_matrix <- replicate(
+  B,
+  rbeta(n, df$alpha, df$beta)   # one draw per unit
+)
+
+bottom_cut   <- floor(0.20 * n)          # bottom‑quintile size
+in_bottom_MC <- apply(draw_matrix, 2, function(sim){
+  idx               <- order(sim)       
+  out               <- logical(n)
+  out[idx[1:bottom_cut]] <- TRUE
+  out
+})
+prob_bottom <- rowMeans(in_bottom_MC)
+df_stab <- df %>%
+  mutate(
+    bottom_point = md_bt_b <= quantile(md_bt_b, 0.20, type = 8),
+    prob_bottom  = prob_bottom,
+    certainty_band = cut(
+      prob_bottom,
+      breaks = c(0, .30, .40, .50, .60, .70, .80, 1),
+      labels = c("<30%", "30–40%", "40–50%", "50–60%",
+                 "60–70%", "70–80%", "≥80%"),
+      right = FALSE
+    )
+  )
+stab_summary_tbl <- df_stab %>%
+  filter(bottom_point) %>%
+  group_by(certainty_band) %>%
+  summarise(
+    n_units = n(),
+    share   = scales::percent(n_units / n(), accuracy = 0.1),
+    .groups = "drop"
+  )
+
+print(stab_summary_tbl)
+
+
+```
+
+
+```{r}
+
+df_map <- df_stab %>%
+  mutate(
+    highlight = prob_bottom >= 0.70,
+    fill_col  = if_else(highlight, "highlight", "other")
+  )
+centroids <- st_centroid(df_map)                       # still sf
+centroids <- cbind(centroids, st_coordinates(centroids))  
+font_add_google("Playfair Display", "playfair")  
+font_add_google("Source Sans Pro", "source")    
+font_add_google("Inter", "inter")               
+showtext_auto()
+create_award_winning_map <- function(df_map, centroids) {
+  n_highlighted <- sum(df_map$highlight, na.rm = TRUE)
+  total_units <- nrow(df_map)
+  pct_highlighted <- round((n_highlighted / total_units) * 100, 1)
+  region_stats <- df_map %>%
+    st_drop_geometry() %>%
+    group_by(ADM1_EN) %>%
+    summarise(
+      total_districts = n(),
+      high_risk_districts = sum(highlight, na.rm = TRUE),
+      pct_at_risk = round((high_risk_districts / total_districts) * 100, 1),
+      .groups = 'drop'
+    ) %>%
+    arrange(desc(pct_at_risk))
+  top_regions <- region_stats %>%
+    filter(high_risk_districts > 0) %>%
+    slice_head(n = 4) %>%
+    pull(ADM1_EN)
+  colors_palette <- list(
+    background = "#FFFFFF",
+    water = "#E3F2FD",
+    other = "#F5F5F5",
+    highlight = "#1565C0",
+    highlight_dark = "#0D47A1",
+    text_primary = "#1A1A1A",
+    text_secondary = "#666666",
+    accent = "#FF6B35",
+    border = "grey"
+  )
+  p <- ggplot() +
+    theme(
+      plot.background = element_rect(fill = colors_palette$background, color = NA),
+      panel.background = element_rect(fill = colors_palette$background, color = NA)
+    ) +
+    geom_sf(
+      data = df_map,
+      aes(fill = fill_col),
+      color = colors_palette$border,
+      size = 0.25,
+      alpha = 0.9
+    ) +
+    geom_sf(
+      data = subset(df_map, highlight == TRUE),
+      fill = colors_palette$highlight_dark,
+      color = "transparent",
+      alpha = 0.15,
+      position = position_nudge(x = 0.001, y = -0.001)
+    ) +
+    scale_fill_manual(
+      values = c(
+        other = colors_palette$other, 
+        highlight = colors_palette$highlight
+      ),
+      guide = "none"
+    ) +
+    geom_text_repel(
+      data = subset(centroids, highlight),
+      aes(x = X, y = Y, label = paste0(ADM2_EN_y, "\n(", ADM1_EN, ")")),
+      family = "source",
+      size = 3,
+      fontface = "bold",
+      color = colors_palette$text_primary,
+      bg.color = alpha("white", 0.95),
+      bg.r = 0.12,
+      box.padding = 0.5,
+      point.padding = 0.4,
+      segment.color = colors_palette$highlight,
+      segment.alpha = 0.7,
+      segment.size = 0.8,
+      # force = 4,
+      max.overlaps = Inf,
+      min.segment.length = 0.2,
+      seed = 42,  # For reproducible label placement
+      lineheight = 0.9
+    ) +
+    coord_sf(
+      expand = FALSE,
+      clip = "off"
+    ) +
+    labs(
+      title = "CRITICAL VACCINATION GAPS BY REGION",
+      subtitle = paste0("District-level MCV1 underperformance risk across administrative regions • ",
+                       n_highlighted, " districts in ", length(top_regions), " regions show ≥70% risk • ",
+                       "Most affected: ", paste(head(top_regions, 2), collapse = ", ")),
+      caption = paste0("Methodology: Bayesian posterior resampling of administrative vaccination data\n",
+                      "Labels show District (Region) • Districts requiring immediate intervention focus\n",
+                      "Regional breakdown: ", nrow(region_stats), " regions analyzed")
+    ) +
+    theme_void(base_family = "source") +
+    theme(
+      plot.title = element_text(
+        family = "playfair",
+        face = "bold",
+        size = 28,
+        hjust = 0.5,
+        color = colors_palette$text_primary,
+        margin = margin(b = 8, t = 25),
+        lineheight = 1.1
+      ),
+      
+      plot.subtitle = element_text(
+        family = "inter",
+        size = 13,
+        hjust = 0.5,
+        color = colors_palette$text_secondary,
+        margin = margin(b = 30),
+        lineheight = 1.3
+      ),
+      
+      plot.caption = element_text(
+        family = "inter",
+        size = 10,
+        hjust = 0,
+        color = colors_palette$text_secondary,
+        margin = margin(t = 25, l = 20),
+        lineheight = 1.2
+      ),
+      plot.margin = margin(40, 50, 40, 50, "pt"),
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      plot.background = element_rect(
+        fill = colors_palette$background, 
+        color = NA
+      ),
+      panel.background = element_rect(
+        fill = colors_palette$background, 
+        color = NA
+      )
+    )
+  
+  return(p)
+}
+create_artistic_masterpiece <- function(df_map, centroids) {
+  region_stats <- df_map %>%
+    st_drop_geometry() %>%
+    group_by(ADM1_EN) %>%
+    summarise(
+      total_districts = n(),
+      high_risk_districts = sum(highlight, na.rm = TRUE),
+      pct_at_risk = round((high_risk_districts / total_districts) * 100, 1),
+      .groups = 'drop'
+    ) %>%
+    arrange(desc(pct_at_risk))
+  colors_palette <- list(
+    background = "#F8F9FA",
+    water = "#E3F2FD",
+    other = "#F5F5F5",
+    highlight = "#1565C0",
+    highlight_dark = "#0D47A1",
+    text_primary = "#1A1A1A",
+    text_secondary = "#666666",
+    accent = "#FF6B35",
+    border = "white"
+  )
+  base_map <- create_award_winning_map(df_map, centroids)
+  enhanced_map <- base_map +
+    annotate(
+      "text",
+      x = Inf, y = Inf,
+      label = "N ↑",
+      hjust = 1.2, vjust = 1.2,
+      family = "inter",
+      size = 4,
+      color = "#999999",
+      fontface = "bold"
+    ) +
+    annotate(
+      "segment",
+      x = -Inf, xend = -Inf,
+      y = -Inf, yend = -Inf,
+      color = "#999999",
+      size = 0.8,
+      alpha = 0.7
+    ) +
+    annotate(
+      "label",
+      x = Inf, y = -Inf,
+      label = paste0("REGIONAL RISK SUMMARY\n",
+                    paste0(region_stats$ADM1_EN[1:min(3, nrow(region_stats))], 
+                          ": ", region_stats$high_risk_districts[1:min(3, nrow(region_stats))], 
+                          " zones", collapse = "\n")),
+      hjust = 1.1, vjust = -0.1,
+      family = "inter",
+      fontface = "bold",
+      size = 3.2,
+      color = colors_palette$highlight,
+      fill = alpha("white", 0.95),
+      label.padding = unit(0.5, "lines"),
+      label.r = unit(0.25, "lines")
+    )
+  
+  return(enhanced_map)
+}
+export_map <- function(map_plot, filename = "mcv1_risk_map", 
+                      width = 16, height = 12, dpi = 300) {
+  
+  ggsave(
+    filename = paste0(filename, ".png"),
+    plot = map_plot,
+    width = width,
+    height = height,
+    dpi = dpi,
+    bg = "#FFFFFF",
+    device = "png",
+    type = "cairo"
+  )
+  ggsave(
+    filename = paste0(filename, ".pdf"),
+    plot = map_plot,
+    width = width,
+    height = height,
+    device = "pdf",
+    bg = "#FFFFFF"
+  )
+  
+  cat("Maps exported as:", paste0(filename, c(".png", ".pdf")), "\n")
+}
+
+artistic_map <- create_artistic_masterpiece(df_map, centroids)
+print(artistic_map)
+export_map(artistic_map, 'mcv1_vaccination_risk_admin_2')
+
+```
+
